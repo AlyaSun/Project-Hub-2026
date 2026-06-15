@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProjectHub 看板</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    color: #1a1a2e;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .overlay-container {
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Drag region - title bar */
+  .overlay-header {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.3);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .overlay-header h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a1a2e;
+    letter-spacing: 0.5px;
+  }
+  .overlay-header .date-text {
+    font-size: 11px;
+    color: rgba(26, 26, 46, 0.5);
+  }
+  .overlay-header .btn-group {
+    -webkit-app-region: no-drag;
+    display: flex;
+    gap: 6px;
+  }
+  .overlay-header .btn-icon {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: rgba(0,0,0,0.04);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    transition: all 0.15s;
+  }
+  .overlay-header .btn-icon:hover {
+    background: rgba(0,0,0,0.08);
+    color: #333;
+  }
+
+  /* Content area */
+  .overlay-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    -webkit-app-region: no-drag;
+  }
+  .overlay-content::-webkit-scrollbar { width: 4px; }
+  .overlay-content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
+
+  /* Section */
+  .section { margin-bottom: 14px; }
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(26, 26, 46, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Task card */
+  .task-card {
+    background: rgba(255, 255, 255, 0.55);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .task-card:hover {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(24, 95, 165, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .task-card.overdue {
+    border-left: 3px solid #dc3545;
+  }
+  .task-card.urgent {
+    border-left: 3px solid #e67e22;
+  }
+  .task-card.soon {
+    border-left: 3px solid #f0ad4e;
+  }
+  .task-card.done {
+    opacity: 0.5;
+  }
+  .task-card.normal {
+    border-left: 3px solid #18a058;
+  }
+
+  .task-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #1a1a2e;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .task-meta {
+    font-size: 10.5px;
+    color: rgba(26, 26, 46, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Mini progress */
+  .mini-progress {
+    width: 100%;
+    height: 3px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 3px;
+    margin-top: 6px;
+    overflow: hidden;
+  }
+  .mini-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .badge-red { background: rgba(220,53,69,0.1); color: #dc3545; }
+  .badge-amber { background: rgba(240,173,78,0.1); color: #e67e22; }
+  .badge-green { background: rgba(24,160,88,0.1); color: #18a058; }
+  .badge-blue { background: rgba(24,95,165,0.1); color: #185fa5; }
+  .badge-purple { background: rgba(111,66,193,0.1); color: #6f42c1; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 20px;
+    color: rgba(26, 26, 46, 0.3);
+    font-size: 12px;
+  }
+
+  /* Refresh button */
+  .refresh-btn {
+    -webkit-app-region: no-drag;
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.6);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover {
+    background: rgba(255,255,255,0.9);
+    transform: scale(1.1);
+  }
+
+  /* Opacity slider */
+  .opacity-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+  }
+  .opacity-control label {
+    font-size: 10px;
+    color: rgba(26,26,46,0.4);
+  }
+  .opacity-control input[type="range"] {
+    width: 60px;
+    height: 3px;
+    -webkit-appearance: none;
+    background: rgba(0,0,0,0.1);
+    border-radius: 3px;
+    outline: none;
+  }
+  .opacity-control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #185fa5;
+    cursor: pointer;
+  }
+
+  /* Resize handle */
+  .resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    cursor: nwse-resize;
+    -webkit-app-region: no-drag;
+  }
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid rgba(0,0,0,0.15);
+    border-bottom: 2px solid rgba(0,0,0,0.15);
+  }
+</style>
+</head>
+<body>
+<div class="overlay-container" id="overlay">
+  <div class="overlay-header">
+    <div>
+      <h2>📋 ProjectHub 看板</h2>
+      <div class="date-text" id="date-text"></div>
+    </div>
+    <div class="btn-group">
+      <div class="opacity-control">
+        <label>透明</label>
+        <input type="range" id="opacity-slider" min="30" max="100" value="72" onchange="setOpacity(this.value)">
+      </div>
+      <button class="btn-icon" onclick="refreshTasks()" title="刷新">🔄</button>
+      <button class="btn-icon" onclick="togglePin()" id="pin-btn" title="置顶切换">📌</button>
+    </div>
+  </div>
+
+  <div class="overlay-content" id="task-list">
+    <div class="empty-state">加载中...</div>
+  </div>
+
+  <button class="refresh-btn" onclick="refreshTasks()" title="刷新数据">↻</button>
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+// ============ Data Layer ============
+// Read tasks from the same localStorage key as the main app
+const STORAGE_KEY = 'projecthub_tasks';
+
+function loadTasks() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  } catch { return []; }
+}
+
+// ============ Helpers ============
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function daysUntil(ddl) {
+  if (!ddl) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const d = new Date(ddl + 'T00:00:00');
+  return Math.ceil((d - now) / 86400000);
+}
+
+function urgencyLevel(t) {
+  if (t.status === 'done') return 'done';
+  const d = daysUntil(t.ddl);
+  if (d === null) return 'normal';
+  if (d < 0) return 'overdue';
+  if (d === 0) return 'urgent';
+  if (d <= 3) return 'soon';
+  return 'normal';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+// ============ Render ============
+function refreshTasks() {
+  const tasks = loadTasks();
+  const now = new Date();
+  document.getElementById('date-text').textContent = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
+
+  // Categorize tasks
+  const overdue = [];
+  const today = [];
+  const soon = []; // next 3 days
+  const recurring = [];
+  const inProgress = [];
+  const notStarted = [];
+
+  tasks.forEach(t => {
+    if (t.status === 'done') return; // skip done tasks
+    const d = daysUntil(t.ddl);
+    if (d !== null && d < 0) overdue.push(t);
+    else if (d === 0) today.push(t);
+    else if (d !== null && d <= 3) soon.push(t);
+    else if (t.recurring && t.recurring.enabled) recurring.push(t);
+    else if (t.status === 'in_progress') inProgress.push(t);
+    else if (t.status === 'not_started') notStarted.push(t);
+  });
+
+  // Sort each group
+  overdue.sort((a,b) => daysUntil(a.ddl) - daysUntil(b.ddl));
+  today.sort((a,b) => (a.priority==='high'?0:1) - (b.priority==='high'?0:1));
+  soon.sort((a,b) => daysUntil(a.ddl) - daysUntil(b.ddl));
+
+  let html = '';
+
+  // Overdue
+  if (overdue.length) {
+    html += renderSection('🚨 逾期', overdue, 'overdue');
+  }
+
+  // Today
+  if (today.length) {
+    html += renderSection('📌 今日到期', today, 'urgent');
+  }
+
+  // Coming soon
+  if (soon.length) {
+    html += renderSection('⏰ 即将到期', soon, 'soon');
+  }
+
+  // Recurring
+  if (recurring.length) {
+    html += renderSection('🔄 固定任务', recurring, 'recurring');
+  }
+
+  // In progress
+  if (inProgress.length) {
+    html += renderSection('🔧 进行中', inProgress, 'normal');
+  }
+
+  // Not started
+  if (notStarted.length) {
+    html += renderSection('📝 未开始', notStarted.slice(0, 5), 'normal');
+  }
+
+  if (!html) {
+    html = '<div class="empty-state">✅ 没有待办任务<br><span style="font-size:10px;margin-top:4px;display:block;">在主窗口添加任务后这里会自动更新</span></div>';
+  }
+
+  document.getElementById('task-list').innerHTML = html;
+}
+
+function renderSection(title, tasks, urgencyClass) {
+  let html = `<div class="section">
+    <div class="section-title">${title} (${tasks.length})</div>`;
+  tasks.forEach(t => {
+    const d = daysUntil(t.ddl);
+    let ddlText = '';
+    if (d !== null) {
+      if (d < 0) ddlText = `<span class="badge badge-red">逾期${Math.abs(d)}天</span>`;
+      else if (d === 0) ddlText = `<span class="badge badge-amber">今天</span>`;
+      else if (d === 1) ddlText = `<span class="badge badge-amber">明天</span>`;
+      else ddlText = `<span class="badge badge-blue">${d}天后</span>`;
+    }
+
+    let recurringText = '';
+    if (t.recurring && t.recurring.enabled) {
+      const labels = { monthly: '每月', quarterly: '每季度', yearly: '每年', weekly: '每周' };
+      let rText = labels[t.recurring.type] || t.recurring.type;
+      if (t.recurring.type === 'quarterly' && t.recurring.quarterMonth) {
+        rText += ['第1个月','第2个月','第3个月'][t.recurring.quarterMonth - 1];
+      }
+      if (t.recurring.type !== 'weekly') rText += t.recurring.day + '日';
+      recurringText = `<span class="badge badge-purple">🔄${rText}</span>`;
+    }
+
+    const cardClass = urgencyLevel(t);
+    const progressColor = t.progress >= 80 ? '#18a058' : t.progress >= 50 ? '#f0ad4e' : '#185fa5';
+
+    html += `<div class="task-card ${cardClass}" onclick="openInMainApp('${t.id}')">
+      <div class="task-name">
+        ${escHtml(t.project)}
+        ${t.priority === 'high' ? '<span class="badge badge-red">高优</span>' : ''}
+        ${recurringText}
+      </div>
+      <div class="task-meta">
+        ${ddlText}
+        ${t.tag ? `<span class="badge badge-purple">${escHtml(t.tag)}</span>` : ''}
+        <span>${t.progress || 0}%</span>
+      </div>
+      <div class="mini-progress">
+        <div class="mini-progress-fill" style="width:${t.progress||0}%;background:${progressColor}"></div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+function openInMainApp(taskId) {
+  // Send IPC to main process to open the task in main window
+  if (window.electronAPI && window.electronAPI.openTask) {
+    window.electronAPI.openTask(taskId);
+  }
+}
+
+function setOpacity(val) {
+  const overlay = document.getElementById('overlay');
+  overlay.style.background = `rgba(255, 255, 255, ${val / 100})`;
+}
+
+let isPinned = true;
+function togglePin() {
+  isPinned = !isPinned;
+  document.getElementById('pin-btn').textContent = isPinned ? '📌' : '📍';
+  if (window.electronAPI && window.electronAPI.toggleAlwaysOnTop) {
+    window.electronAPI.toggleAlwaysOnTop(isPinned);
+  }
+}
+
+// ============ Auto-refresh ============
+refreshTasks();
+setInterval(refreshTasks, 60000); // Refresh every minute
+
+// Listen for storage changes from main window
+window.addEventListener('storage', (e) => {
+  if (e.key === STORAGE_KEY) refreshTasks();
+});
+</script>
+</body>
+</html>

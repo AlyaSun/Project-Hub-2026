@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProjectHub - 项目追踪</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --border-em: rgba(0,0,0,0.2);
+    --text: #1a1a18;
+    --text-muted: #6b6b67;
+    --text-hint: #9c9c97;
+    --blue: #185fa5;
+    --blue-light: #e6f1fb;
+    --green: #3b6d11;
+    --green-light: #eaf3de;
+    --amber: #854f0b;
+    --amber-light: #faeeda;
+    --red: #a32d2d;
+    --red-light: #fcebeb;
+    --purple: #534ab7;
+    --purple-light: #eeedfe;
+    --orange: #b84f00;
+    --orange-light: #fff0e6;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.6; min-height: 100vh; }
+
+  /* Nav */
+  .nav { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 0; height: 52px; position: sticky; top: 0; z-index: 100; }
+  .nav-brand { font-size: 15px; font-weight: 500; margin-right: 32px; color: var(--text); }
+  .nav-brand span { color: var(--blue); }
+  .nav-tab { padding: 0 16px; height: 52px; display: flex; align-items: center; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: all .15s; white-space: nowrap; }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .nav-right { margin-left: auto; display: flex; gap: 8px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); border: 0.5px solid var(--border-em); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; transition: all .15s; }
+  .btn:hover { background: var(--bg); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { background: #0c447c; }
+  .btn-danger { background: var(--red-light); color: var(--red); border-color: rgba(163,45,45,0.2); }
+  .btn-orange { background: var(--orange-light); color: var(--orange); border-color: rgba(184,79,0,0.2); }
+
+  /* Layout */
+  .page { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card + .card { margin-top: 16px; }
+  .card-title { font-size: 14px; font-weight: 500; margin-bottom: 16px; }
+
+  /* Form */
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .form-row-full { margin-bottom: 16px; }
+  .form-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border: 0.5px solid var(--border-em); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface); outline: none; transition: border-color .15s; }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+  textarea { resize: vertical; min-height: 80px; }
+  textarea.tall { min-height: 120px; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  /* Progress bar */
+  .progress-wrap { margin: 6px 0; }
+  .progress-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .progress-low { background: var(--red); }
+  .progress-mid { background: var(--amber); }
+  .progress-high { background: var(--green); }
+
+  /* Tags / badges */
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-amber { background: var(--amber-light); color: var(--amber); }
+  .badge-green { background: var(--green-light); color: var(--green); }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-purple { background: var(--purple-light); color: var(--purple); }
+  .badge-gray { background: #f1efe8; color: #5f5e5a; }
+  .badge-orange { background: var(--orange-light); color: var(--orange); }
+
+  /* Kanban */
+  .kanban { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .kanban-col { background: var(--bg); border-radius: var(--radius); padding: 12px; min-height: 200px; }
+  .kanban-col-title { font-size: 12px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .kanban-col-title .count { background: var(--border); color: var(--text-muted); border-radius: 10px; padding: 1px 6px; font-size: 11px; }
+  .kanban-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s; }
+  .kanban-card:hover { border-color: var(--border-em); }
+  .kanban-card-name { font-weight: 500; font-size: 13px; margin-bottom: 6px; }
+  .kanban-card-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .top1-banner { background: #fff7e6; border: 0.5px solid #e9b96e; border-radius: var(--radius-sm); padding: 6px 10px; font-size: 12px; color: #7a4800; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+
+  /* Issue blocker card (in kanban) */
+  .issue-blocker-card { background: var(--red-light); border: 0.5px solid rgba(163,45,45,0.25); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s; }
+  .issue-blocker-card:hover { border-color: rgba(163,45,45,0.5); }
+  .issue-blocker-label { font-size: 10px; font-weight: 600; color: var(--red); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .issue-blocker-title { font-weight: 500; font-size: 13px; color: var(--text); }
+  .issue-blocker-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Calendar */
+  .cal-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  .cal-nav { display: flex; gap: 4px; }
+  .cal-nav button { padding: 4px 10px; border: 0.5px solid var(--border-em); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-size: 13px; }
+  .cal-nav button:hover { background: var(--bg); }
+  .cal-month-title { font-size: 15px; font-weight: 500; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--text-muted); padding: 6px 0; font-weight: 500; }
+  .cal-cell { min-height: 88px; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 6px; font-size: 12px; }
+  .cal-cell.other-month { background: var(--bg); }
+  .cal-cell.today { border-color: var(--blue); }
+  .cal-date { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+  .cal-cell.today .cal-date { color: var(--blue); }
+  .cal-dot { font-size: 11px; padding: 1px 5px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .cal-dot-red { background: var(--red-light); color: var(--red); }
+  .cal-dot-amber { background: var(--amber-light); color: var(--amber); }
+  .cal-dot-green { background: var(--green-light); color: var(--green); }
+  .cal-dot-blue { background: var(--blue-light); color: var(--blue); }
+
+  /* Project list */
+  .project-list { display: flex; flex-direction: column; gap: 10px; }
+  .project-item { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: border-color .15s; }
+  .project-item:hover { border-color: var(--border-em); }
+  .project-item-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .project-name { font-weight: 500; font-size: 14px; }
+  .project-note-preview { font-size: 12px; color: var(--text-hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px; }
+
+  /* Issue list */
+  .issue-list { display: flex; flex-direction: column; gap: 10px; }
+  .issue-item { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: border-color .15s; }
+  .issue-item:hover { border-color: var(--border-em); }
+  .issue-item.blocking { border-left: 3px solid var(--red); }
+  .issue-item-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .issue-title { font-weight: 500; font-size: 14px; }
+  .issue-preview { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 15px; font-weight: 500; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+  .modal-close { cursor: pointer; color: var(--text-muted); font-size: 18px; line-height: 1; padding: 4px; }
+  .modal-close:hover { color: var(--text); }
+
+  /* Daily reminder modal */
+  .reminder-item { padding: 12px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); margin-bottom: 8px; }
+  .reminder-item.top1 { border-color: #e9b96e; background: #fff7e6; }
+  .reminder-item.blocker { border-color: rgba(163,45,45,0.35); background: var(--red-light); }
+  .reminder-top1-label { font-size: 11px; font-weight: 500; color: #7a4800; margin-bottom: 4px; }
+  .reminder-blocker-label { font-size: 11px; font-weight: 500; color: var(--red); margin-bottom: 4px; }
+  .reminder-item-name { font-weight: 500; font-size: 13px; }
+  .reminder-item-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Metric grid */
+  .metric-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .metric-card { background: var(--bg); border-radius: var(--radius-sm); padding: 14px; }
+  .metric-label { font-size: 12px; color: var(--text-muted); }
+  .metric-value { font-size: 24px; font-weight: 500; color: var(--text); line-height: 1.2; }
+
+  /* Severity dot */
+  .sev-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .sev-blocking { background: var(--red); }
+  .sev-major { background: var(--amber); }
+  .sev-minor { background: var(--green); }
+
+  /* History */
+  .history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .history-table th { text-align: left; padding: 8px 10px; font-weight: 500; font-size: 11px; color: var(--text-muted); border-bottom: 0.5px solid var(--border); }
+  .history-table td { padding: 8px 10px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+  .history-table tr:last-child td { border-bottom: none; }
+  .history-table tr:hover td { background: var(--bg); }
+
+  /* Tabs inside page */
+  .inner-tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--border); margin-bottom: 20px; }
+  .inner-tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); transition: all .15s; }
+  .inner-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .inner-tab-panel { display: none; }
+  .inner-tab-panel.active { display: block; }
+
+  .project-select-wrap { position: relative; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-size: 15px; font-weight: 500; }
+  .dashboard-section-title { font-size: 13px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .dashboard-section-title .line { flex: 1; height: 0.5px; background: var(--border); }
+
+  /* Recurring task styles */
+  .recurring-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px; background: var(--bg); border-radius: var(--radius-sm); border: 0.5px solid var(--border); }
+  .recurring-toggle label { font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .switch { position: relative; width: 40px; height: 22px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider { position: absolute; cursor: pointer; inset: 0; background: var(--border-em); border-radius: 22px; transition: .2s; }
+  .switch .slider::before { content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .switch input:checked + .slider { background: var(--blue); }
+  .switch input:checked + .slider::before { transform: translateX(18px); }
+  .recurring-options { display: none; margin-bottom: 16px; padding: 12px; background: var(--blue-light); border-radius: var(--radius-sm); border: 0.5px solid rgba(24,95,165,0.15); }
+  .recurring-options.visible { display: block; }
+  .recurring-options .form-row { margin-bottom: 0; }
+  .badge-recurring { background: var(--purple-light); color: var(--purple); }
+  .recurring-info { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: var(--purple-light); border-radius: var(--radius-sm); font-size: 12px; color: var(--purple); margin-top: 8px; }
+
+  @media (max-width: 800px) {
+    .metric-grid { grid-template-columns: repeat(3, 1fr); }
+    .form-row, .form-row-3 { grid-template-columns: 1fr; }
+    .page { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">Project<span>Hub</span></div>
+  <div class="nav-tab active" onclick="showPage('dashboard')">看板</div>
+  <div class="nav-tab" onclick="showPage('projects')">项目</div>
+  <div class="nav-tab" onclick="showPage('add')">+ 新建任务</div>
+  <div class="nav-tab" onclick="showPage('issues')">问题日志</div>
+  <div class="nav-tab" onclick="showPage('add-issue')">+ 记录问题</div>
+  <div class="nav-tab" onclick="showPage('calendar')">日历</div>
+  <div class="nav-tab" onclick="showPage('history')">历史记录</div>
+  <div class="nav-tab" onclick="toggleDesktopOverlay()" style="background:var(--purple-light);color:var(--purple);">🖥 桌面看板</div>
+  <div class="nav-right">
+    <button class="btn" onclick="exportExcel()">导出 Excel</button>
+  </div>
+</nav>
+
+<!-- ======= Dashboard ======= -->
+<div class="page active" id="page-dashboard">
+  <div class="metric-grid" id="metric-grid"></div>
+
+  <!-- Blocker section -->
+  <div class="dashboard-section-title">
+    <span>&#128680; 未解决的阻塞性问题</span>
+    <span class="line"></span>
+    <span id="blocker-count-label" style="font-size:12px;color:var(--red);font-weight:400;"></span>
+  </div>
+  <div id="blocker-panel"></div>
+
+  <!-- Kanban -->
+  <div class="dashboard-section-title" style="margin-top:24px;">
+    <span>任务看板</span>
+    <span class="line"></span>
+    <span style="font-size:12px;color:var(--text-muted);font-weight:400;">按截止时间排序</span>
+  </div>
+  <div class="kanban" id="kanban-board"></div>
+</div>
+
+<!-- ======= Projects ======= -->
+<div class="page" id="page-projects">
+  <div class="section-header">
+    <div class="section-title">全部项目</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="filter-status" onchange="renderProjects()" style="width:120px;">
+        <option value="">全部状态</option>
+        <option value="not_started">未开始</option>
+        <option value="in_progress">进行中</option>
+        <option value="done">已完成</option>
+      </select>
+      <select id="filter-name" onchange="renderProjects()" style="width:140px;">
+        <option value="">全部项目</option>
+      </select>
+    </div>
+  </div>
+  <div class="project-list" id="project-list"></div>
+</div>
+
+<!-- ======= Add/Edit Task ======= -->
+<div class="page" id="page-add">
+  <div class="card" style="max-width:600px;">
+    <div class="card-title" id="form-title">添加任务</div>
+    <input type="hidden" id="edit-id">
+
+    <div class="form-row-full">
+      <label class="form-label">项目名称 <span style="color:var(--red)">*</span></label>
+      <div class="project-select-wrap">
+        <input list="project-datalist" id="project-name-input" placeholder="选择或输入项目名..." autocomplete="off">
+        <datalist id="project-datalist"></datalist>
+      </div>
+    </div>
+
+    <div class="form-row-3">
+      <div>
+        <label class="form-label">截止日期 (DDL)</label>
+        <input type="date" id="task-ddl">
+      </div>
+      <div>
+        <label class="form-label">进度 <span id="progress-display">0%</span></label>
+        <input type="range" id="task-progress" min="0" max="100" value="0" oninput="document.getElementById('progress-display').textContent=this.value+'%'">
+      </div>
+      <div>
+        <label class="form-label">状态</label>
+        <select id="task-status">
+          <option value="not_started">未开始</option>
+          <option value="in_progress">进行中</option>
+          <option value="done">已完成</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <label class="form-label">优先级</label>
+        <select id="task-priority">
+          <option value="normal">普通</option>
+          <option value="high">高优</option>
+          <option value="low">低优</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">分类标签</label>
+        <input type="text" id="task-tag" placeholder="如：研究、开发、汇报...">
+      </div>
+    </div>
+
+    <!-- Recurring toggle -->
+    <div class="recurring-toggle">
+      <label class="switch">
+        <input type="checkbox" id="task-recurring" onchange="toggleRecurringOptions()">
+        <span class="slider"></span>
+      </label>
+      <label for="task-recurring">🔄 固定任务（周期重复）</label>
+    </div>
+
+    <!-- Recurring options (shown when toggle is on) -->
+    <div class="recurring-options" id="recurring-options">
+      <div class="form-row">
+        <div>
+          <label class="form-label">重复周期</label>
+          <select id="recurring-type" onchange="onRecurringTypeChange()">
+            <option value="monthly">每月</option>
+            <option value="quarterly">每季度</option>
+            <option value="yearly">每年</option>
+            <option value="weekly">每周</option>
+          </select>
+        </div>
+        <div id="recurring-day-wrap">
+          <label class="form-label">重复日期 <span style="font-size:11px;color:var(--text-hint)">(几号)</span></label>
+          <input type="number" id="recurring-day" min="1" max="31" value="20" placeholder="20" onchange="updateRecurringDdl()">
+        </div>
+        <div id="recurring-weekday-wrap" style="display:none;">
+          <label class="form-label">星期</label>
+          <select id="recurring-weekday" onchange="updateRecurringDdl()">
+            <option value="1">周一</option>
+            <option value="2">周二</option>
+            <option value="3">周三</option>
+            <option value="4">周四</option>
+            <option value="5">周五</option>
+            <option value="6">周六</option>
+            <option value="0">周日</option>
+          </select>
+        </div>
+        <div id="recurring-quarter-month-wrap" style="display:none;">
+          <label class="form-label">季度第几月</label>
+          <select id="recurring-quarter-month" onchange="updateRecurringDdl()">
+            <option value="1">第1个月</option>
+            <option value="2">第2个月</option>
+            <option value="3">第3个月</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-hint);margin-top:8px;" id="recurring-preview"></div>
+    </div>
+
+    <div class="form-row-full">
+      <label class="form-label">任务描述</label>
+      <textarea id="task-desc" placeholder="任务背景、目标、要求..."></textarea>
+    </div>
+
+    <div class="form-row-full">
+      <label class="form-label">遇到的问题 / 补充信息</label>
+      <textarea id="task-notes" placeholder="遇到的问题、想法、进展记录..."></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn" onclick="resetForm()">清空</button>
+      <button class="btn btn-primary" onclick="saveTask()">保存任务</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Issues Page ======= -->
+<div class="page" id="page-issues">
+  <div class="section-header">
+    <div class="section-title">问题日志</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="filter-issue-status" onchange="renderIssues()" style="width:120px;">
+        <option value="">全部状态</option>
+        <option value="open">待解决</option>
+        <option value="in_progress">处理中</option>
+        <option value="resolved">已解决</option>
+      </select>
+      <select id="filter-issue-sev" onchange="renderIssues()" style="width:120px;">
+        <option value="">全部严重度</option>
+        <option value="blocking">🔴 阻塞</option>
+        <option value="major">🟡 影响进度</option>
+        <option value="minor">🟢 轻微</option>
+      </select>
+    </div>
+  </div>
+  <div class="issue-list" id="issue-list"></div>
+</div>
+
+<!-- ======= Add/Edit Issue ======= -->
+<div class="page" id="page-add-issue">
+  <div class="card" style="max-width:640px;">
+    <div class="card-title" id="issue-form-title">记录问题</div>
+    <input type="hidden" id="issue-edit-id">
+
+    <div class="form-row-full">
+      <label class="form-label">问题标题 <span style="color:var(--red)">*</span></label>
+      <input type="text" id="issue-title-input" placeholder="一句话概括问题，如：API鉴权一直报403...">
+    </div>
+
+    <div class="form-row">
+      <div>
+        <label class="form-label">关联项目（可选）</label>
+        <div class="project-select-wrap">
+          <input list="issue-project-datalist" id="issue-project-input" placeholder="选择关联项目..." autocomplete="off">
+          <datalist id="issue-project-datalist"></datalist>
+        </div>
+      </div>
+      <div>
+        <label class="form-label">严重程度</label>
+        <select id="issue-severity">
+          <option value="blocking">🔴 阻塞 — 完全卡住，无法继续</option>
+          <option value="major">🟡 影响进度 — 有影响但还能推进</option>
+          <option value="minor">🟢 轻微 — 小问题，暂时可忽略</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <label class="form-label">状态</label>
+        <select id="issue-status">
+          <option value="open">待解决</option>
+          <option value="in_progress">处理中</option>
+          <option value="resolved">已解决</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">标签</label>
+        <input type="text" id="issue-tag" placeholder="如：环境配置、数据、逻辑...">
+      </div>
+    </div>
+
+    <div class="form-row-full">
+      <label class="form-label">问题描述</label>
+      <textarea class="tall" id="issue-desc" placeholder="现象是什么？背景是什么？什么时候开始出现的？"></textarea>
+    </div>
+
+    <div class="form-row-full">
+      <label class="form-label">操作记录 <span style="font-size:11px;color:var(--text-hint)">（我试过什么、结果如何，可持续追加）</span></label>
+      <textarea class="tall" id="issue-log" placeholder="2026-06-09 尝试重新配置环境变量，未解决&#10;2026-06-10 发现是权限问题，正在排查..."></textarea>
+    </div>
+
+    <div class="form-row-full">
+      <label class="form-label">解决方案 <span style="font-size:11px;color:var(--text-hint)">（解决后填写，留作日后参考）</span></label>
+      <textarea id="issue-solution" placeholder="最终如何解决的？用了什么方法或工具？"></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn" onclick="resetIssueForm()">清空</button>
+      <button class="btn btn-primary" onclick="saveIssue()">保存问题</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Calendar ======= -->
+<div class="page" id="page-calendar">
+  <div class="card">
+    <div class="cal-header">
+      <div class="cal-nav">
+        <button onclick="calNav(-1)">&#8249;</button>
+        <button onclick="calNav(1)">&#8250;</button>
+      </div>
+      <div class="cal-month-title" id="cal-title"></div>
+      <button class="btn" onclick="calToday()" style="margin-left:8px;">今天</button>
+    </div>
+    <div class="cal-grid" id="cal-dow-row"></div>
+    <div class="cal-grid" id="cal-cells" style="margin-top:2px;"></div>
+  </div>
+</div>
+
+<!-- ======= History ======= -->
+<div class="page" id="page-history">
+  <div class="card">
+    <div class="section-header" style="margin-bottom:4px;">
+      <div class="section-title">历史记录</div>
+      <button class="btn btn-primary" onclick="exportExcel()">导出 Excel</button>
+    </div>
+    <div class="inner-tabs">
+      <div class="inner-tab active" onclick="switchHistoryTab('tasks')">任务记录</div>
+      <div class="inner-tab" onclick="switchHistoryTab('issues')">问题日志</div>
+    </div>
+    <div class="inner-tab-panel active" id="history-tasks-panel">
+      <div style="overflow-x:auto;">
+        <table class="history-table">
+          <thead><tr>
+            <th>项目</th><th>DDL</th><th>周期</th><th>进度</th><th>状态</th><th>优先级</th><th>标签</th><th>描述</th><th>问题/补充</th><th>创建时间</th><th>更新时间</th>
+          </tr></thead>
+          <tbody id="history-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="inner-tab-panel" id="history-issues-panel">
+      <div style="overflow-x:auto;">
+        <table class="history-table">
+          <thead><tr>
+            <th>问题标题</th><th>关联项目</th><th>严重度</th><th>状态</th><th>标签</th><th>问题描述</th><th>操作记录</th><th>解决方案</th><th>创建时间</th><th>更新时间</th>
+          </tr></thead>
+          <tbody id="history-issues-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Detail Modal (Task) ======= -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="detail-title"></span>
+      <span class="modal-close" onclick="closeModal('detail-modal')">&#215;</span>
+    </div>
+    <div id="detail-body"></div>
+    <div class="form-actions" style="margin-top:16px;">
+      <button class="btn btn-danger" id="detail-delete-btn">删除</button>
+      <button class="btn" onclick="closeModal('detail-modal')">关闭</button>
+      <button class="btn btn-primary" id="detail-edit-btn">编辑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Issue Detail Modal ======= -->
+<div class="modal-overlay" id="issue-detail-modal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="issue-detail-title"></span>
+      <span class="modal-close" onclick="closeModal('issue-detail-modal')">&#215;</span>
+    </div>
+    <div id="issue-detail-body"></div>
+    <div class="form-actions" style="margin-top:16px;">
+      <button class="btn btn-danger" id="issue-detail-delete-btn">删除</button>
+      <button class="btn" onclick="closeModal('issue-detail-modal')">关闭</button>
+      <button class="btn btn-primary" id="issue-detail-edit-btn">编辑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======= Daily Reminder Modal ======= -->
+<div class="modal-overlay" id="reminder-modal">
+  <div class="modal">
+    <div class="modal-title">
+      今日提醒
+      <span class="modal-close" onclick="closeModal('reminder-modal')">&#215;</span>
+    </div>
+    <div id="reminder-body"></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="closeModal('reminder-modal')">知道了</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========================
+// Data Store
+// ========================
+const STORE_KEY = 'projecthub_tasks';
+const ISSUES_KEY = 'projecthub_issues';
+const REMINDER_KEY = 'projecthub_reminder_date';
+
+function loadTasks() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } }
+function saveTasks(t) { localStorage.setItem(STORE_KEY, JSON.stringify(t)); }
+function loadIssues() { try { return JSON.parse(localStorage.getItem(ISSUES_KEY)) || []; } catch { return []; } }
+function saveIssues(t) { localStorage.setItem(ISSUES_KEY, JSON.stringify(t)); }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ========================
+// Navigation
+// ========================
+const PAGE_TABS = { dashboard:0, projects:1, add:2, issues:3, 'add-issue':4, calendar:5, history:6 };
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-tab')[PAGE_TABS[name]].classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'projects') renderProjects();
+  if (name === 'issues') renderIssues();
+  if (name === 'calendar') renderCalendar();
+  if (name === 'history') renderHistory();
+  if (name === 'add' && !document.getElementById('edit-id').value) resetForm();
+  if (name === 'add-issue' && !document.getElementById('issue-edit-id').value) resetIssueForm();
+}
+
+// ========================
+// Helpers
+// ========================
+function daysUntil(ddl) {
+  if (!ddl) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const d = new Date(ddl); d.setHours(0,0,0,0);
+  return Math.round((d - now) / 86400000);
+}
+function urgencyLevel(task) {
+  if (task.status === 'done') return 'done';
+  const d = daysUntil(task.ddl);
+  if (d === null) return 'no_ddl';
+  if (d < 0) return 'overdue';
+  if (d <= 3) return 'urgent';
+  if (d <= 7) return 'soon';
+  return 'normal';
+}
+function statusLabel(s) { return { not_started:'未开始', in_progress:'进行中', done:'已完成' }[s] || s; }
+function priorityLabel(p) { return { high:'高优', normal:'普通', low:'低优' }[p] || p; }
+function issueStatusLabel(s) { return { open:'待解决', in_progress:'处理中', resolved:'已解决' }[s] || s; }
+function issueSevLabel(s) { return { blocking:'🔴 阻塞', major:'🟡 影响进度', minor:'🟢 轻微' }[s] || s; }
+
+function statusBadge(s) {
+  const map = { not_started:'badge-gray', in_progress:'badge-blue', done:'badge-green' };
+  return `<span class="badge ${map[s]||'badge-gray'}">${statusLabel(s)}</span>`;
+}
+function urgencyBadge(task) {
+  const u = urgencyLevel(task);
+  const d = daysUntil(task.ddl);
+  const map = {
+    done: ['badge-green','已完成'],
+    overdue: ['badge-red','已逾期'],
+    urgent: ['badge-red',`${d}天后截止`],
+    soon: ['badge-amber',`${d}天后截止`],
+    normal: ['badge-blue',`${d}天后截止`],
+    no_ddl: ['badge-gray','无截止']
+  };
+  const [cls, label] = map[u];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function issueStatusBadge(s) {
+  const map = { open:'badge-red', in_progress:'badge-amber', resolved:'badge-green' };
+  return `<span class="badge ${map[s]||'badge-gray'}">${issueStatusLabel(s)}</span>`;
+}
+function issueSevBadge(s) {
+  const map = { blocking:'badge-red', major:'badge-amber', minor:'badge-green' };
+  return `<span class="badge ${map[s]||'badge-gray'}">${issueSevLabel(s)}</span>`;
+}
+function progressClass(p) {
+  p = parseInt(p);
+  if (p >= 70) return 'progress-high';
+  if (p >= 40) return 'progress-mid';
+  return 'progress-low';
+}
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function isTop1(task) {
+  if (task.status === 'done') return false;
+  if (!task.ddl) return false;
+  const d = daysUntil(task.ddl);
+  return (d !== null && d <= 7 && parseInt(task.progress||0) < 50) || d < 0;
+}
+
+// ========================
+// Recurring helpers
+// ========================
+function recurringLabel(type) { return { monthly:'每月', quarterly:'每季度', yearly:'每年', weekly:'每周' }[type] || type; }
+function fmtDate(date) { const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0'); return `${y}-${m}-${d}`; }
+function recurringBadge(task) {
+  if (!task.recurring || !task.recurring.enabled) return '';
+  if (task.recurring.type === 'weekly') {
+    const dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+    return `<span class="badge badge-recurring">🔄 每周${dayNames[task.recurring.day]||''}</span>`;
+  }
+  if (task.recurring.type === 'quarterly') {
+    const qm = task.recurring.quarterMonth || 1;
+    const qmText = ['第1个月','第2个月','第3个月'][qm - 1] || '第1个月';
+    return `<span class="badge badge-recurring">🔄 每季度${qmText}${task.recurring.day}日</span>`;
+  }
+  return `<span class="badge badge-recurring">🔄 ${recurringLabel(task.recurring.type)}${task.recurring.day}日</span>`;
+}
+function computeNextRecurringDdl(type, day, fromDate, quarterMonth) {
+  const now = fromDate || new Date();
+  now.setHours(0,0,0,0);
+  function adjustWeekend(date) {
+    const dow = date.getDay();
+    if (dow === 0) { // Sunday → Friday
+      date.setDate(date.getDate() - 2);
+    } else if (dow === 6) { // Saturday → Friday
+      date.setDate(date.getDate() - 1);
+    }
+    return date;
+  }
+  if (type === 'weekly') {
+    // day is 0-6 (Sun-Sat), find next occurrence
+    const current = now.getDay();
+    let diff = day - current;
+    if (diff <= 0) diff += 7;
+    const next = new Date(now);
+    next.setDate(next.getDate() + diff);
+    return fmtDate(adjustWeekend(next));
+  }
+  // For monthly/quarterly/yearly, day is the day of month
+  if (type === 'monthly') {
+    let y = now.getFullYear(), m = now.getMonth();
+    // Try current month first
+    let target = new Date(y, m, day);
+    if (target < now) { m++; if (m > 11) { m = 0; y++; } target = new Date(y, m, day); }
+    return fmtDate(adjustWeekend(target));
+  }
+  if (type === 'quarterly') {
+    // quarterMonth: 1=first month of quarter, 2=second, 3=third
+    const qm = quarterMonth || 1; // default to 1st month
+    const quarterStarts = [0, 3, 6, 9]; // Jan, Apr, Jul, Oct
+    const nowMonth = now.getMonth();
+    let y = now.getFullYear();
+    // Find next quarter month that matches
+    let target = null;
+    for (let qi = 0; qi < quarterStarts.length; qi++) {
+      const month = quarterStarts[qi] + (qm - 1);
+      const candidate = new Date(y, month, day);
+      if (candidate >= now) { target = candidate; break; }
+    }
+    if (!target) {
+      // Roll to next year's first quarter
+      const month = quarterStarts[0] + (qm - 1);
+      target = new Date(y + 1, month, day);
+    }
+    return fmtDate(adjustWeekend(target));
+  }
+  if (type === 'yearly') {
+    let y = now.getFullYear();
+    let target = new Date(y, 0, day); // Jan {day}
+    if (target < now) { target = new Date(y + 1, 0, day); }
+    return fmtDate(adjustWeekend(target));
+  }
+  return null;
+}
+function toggleRecurringOptions() {
+  const on = document.getElementById('task-recurring').checked;
+  document.getElementById('recurring-options').classList.toggle('visible', on);
+  if (on) updateRecurringDdl();
+}
+function onRecurringTypeChange() {
+  const type = document.getElementById('recurring-type').value;
+  const dayWrap = document.getElementById('recurring-day-wrap');
+  const weekdayWrap = document.getElementById('recurring-weekday-wrap');
+  const qMonthWrap = document.getElementById('recurring-quarter-month-wrap');
+  if (type === 'weekly') {
+    dayWrap.style.display = 'none';
+    weekdayWrap.style.display = 'block';
+    qMonthWrap.style.display = 'none';
+  } else if (type === 'quarterly') {
+    dayWrap.style.display = 'block';
+    weekdayWrap.style.display = 'none';
+    qMonthWrap.style.display = 'block';
+  } else {
+    dayWrap.style.display = 'block';
+    weekdayWrap.style.display = 'none';
+    qMonthWrap.style.display = 'none';
+  }
+  updateRecurringDdl();
+}
+function updateRecurringDdl() {
+  const type = document.getElementById('recurring-type').value;
+  let day;
+  if (type === 'weekly') {
+    day = parseInt(document.getElementById('recurring-weekday').value);
+  } else {
+    day = parseInt(document.getElementById('recurring-day').value) || 20;
+  }
+  const qm = type === 'quarterly' ? parseInt(document.getElementById('recurring-quarter-month').value) : undefined;
+  const ddl = computeNextRecurringDdl(type, day, undefined, qm);
+  const preview = document.getElementById('recurring-preview');
+  if (type === 'weekly') {
+    const dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+    preview.textContent = `将在每个${dayNames[day] || '周'+day}自动生成，下一次截止日期：${ddl}`;
+  } else if (type === 'quarterly') {
+    const qmText = ['第1个月','第2个月','第3个月'][qm - 1] || '第1个月';
+    const quarterMonths = { 1: '1月/4月/7月/10月', 2: '2月/5月/8月/11月', 3: '3月/6月/9月/12月' };
+    preview.textContent = `将在每季度${qmText}(${quarterMonths[qm]})的${day}日自动生成，下一次截止日期：${ddl}`;
+  } else if (type === 'monthly') {
+    preview.textContent = `将在每月${day}日自动生成，下一次截止日期：${ddl}`;
+  } else {
+    preview.textContent = `下一次截止日期：${ddl}`;
+  }
+  // Weekend adjustment hint
+  const ddlDate = new Date(ddl);
+  const origDay = ddlDate.getDate();
+  // Check if it was adjusted from weekend
+  const dow = ddlDate.getDay();
+  // We can't easily detect adjustment here, but we can show a note if DDL is Friday
+  // Just auto-fill DDL field
+  document.getElementById('task-ddl').value = ddl;
+}
+// Generate recurring task instances on app load
+function generateRecurringTasks() {
+  const tasks = loadTasks();
+  const now = new Date(); now.setHours(0,0,0,0);
+  let changed = false;
+  tasks.forEach(t => {
+    if (!t.recurring || !t.recurring.enabled) return;
+    // Check if this recurring template needs a new instance
+    // Logic: if the task is done and its DDL is in the past, generate next
+    if (t.status === 'done' && t.ddl) {
+      const ddlDate = new Date(t.ddl); ddlDate.setHours(0,0,0,0);
+      if (ddlDate < now) {
+        // Check if next instance already exists
+        const nextDdl = computeNextRecurringDdl(t.recurring.type, t.recurring.day, undefined, t.recurring.quarterMonth);
+        const existing = tasks.find(x => x.project === t.project && x.ddl === nextDdl && x.recurring && x.recurring.templateId === (t.recurring.templateId || t.id));
+        if (!existing) {
+          const newTask = {
+            id: genId(),
+            project: t.project,
+            title: t.project,
+            ddl: nextDdl,
+            progress: 0,
+            status: 'not_started',
+            priority: t.priority,
+            tag: t.tag,
+            desc: t.desc,
+            notes: t.notes,
+            recurring: { enabled: true, type: t.recurring.type, day: t.recurring.day, quarterMonth: t.recurring.quarterMonth, templateId: t.recurring.templateId || t.id },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          tasks.push(newTask);
+          changed = true;
+        }
+      }
+    }
+    // Also check: if recurring task is NOT done and DDL has passed, still generate warning but don't auto-create
+  });
+  // Also check: for each recurring template, ensure there's at least one pending instance for the current period
+  const templateIds = [...new Set(tasks.filter(t => t.recurring && t.recurring.enabled).map(t => t.recurring.templateId || t.id))];
+  templateIds.forEach(tid => {
+    const template = tasks.find(t => t.id === tid) || tasks.find(t => t.recurring && t.recurring.templateId === tid);
+    if (!template) return;
+    const rec = template.recurring;
+    const nextDdl = computeNextRecurringDdl(rec.type, rec.day, undefined, rec.quarterMonth);
+    const pendingInstance = tasks.find(t =>
+      (t.recurring && (t.recurring.templateId === tid || t.id === tid)) &&
+      t.ddl === nextDdl &&
+      t.status !== 'done'
+    );
+    if (!pendingInstance) {
+      // Check if there's a done instance with this DDL already
+      const doneInstance = tasks.find(t =>
+        (t.recurring && (t.recurring.templateId === tid || t.id === tid)) &&
+        t.ddl === nextDdl &&
+        t.status === 'done'
+      );
+      if (!doneInstance) {
+        const newTask = {
+          id: genId(),
+          project: template.project,
+          title: template.project,
+          ddl: nextDdl,
+          progress: 0,
+          status: 'not_started',
+          priority: template.priority,
+          tag: template.tag,
+          desc: template.desc,
+          notes: template.notes,
+          recurring: { enabled: true, type: rec.type, day: rec.day, quarterMonth: rec.quarterMonth, templateId: tid },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        tasks.push(newTask);
+        changed = true;
+      }
+    }
+  });
+  if (changed) saveTasks(tasks);
+}
+
+// ========================
+// Project names
+// ========================
+function getProjectNames() {
+  const t = [...loadTasks().map(t=>t.project), ...loadIssues().map(i=>i.project)];
+  return [...new Set(t.filter(Boolean))].sort();
+}
+function refreshDatalist() {
+  const names = getProjectNames().map(n => `<option value="${escHtml(n)}">`).join('');
+  document.getElementById('project-datalist').innerHTML = names;
+  document.getElementById('issue-project-datalist').innerHTML = names;
+}
+function refreshFilterName() {
+  const sel = document.getElementById('filter-name');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全部项目</option>' + getProjectNames().map(n=>`<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+  sel.value = cur;
+}
+
+// ========================
+// Dashboard
+// ========================
+function renderDashboard() {
+  const tasks = loadTasks();
+  const issues = loadIssues();
+  const total = tasks.length;
+  const done = tasks.filter(t=>t.status==='done').length;
+  const urgent = tasks.filter(t=>{ const d=daysUntil(t.ddl); return d!==null&&d<=3&&t.status!=='done'; }).length;
+  const overdue = tasks.filter(t=>{ const d=daysUntil(t.ddl); return d!==null&&d<0&&t.status!=='done'; }).length;
+  const openBlockers = issues.filter(i=>i.severity==='blocking'&&i.status!=='resolved').length;
+
+  document.getElementById('metric-grid').innerHTML = `
+    <div class="metric-card"><div class="metric-label">全部任务</div><div class="metric-value">${total}</div></div>
+    <div class="metric-card"><div class="metric-label">已完成</div><div class="metric-value" style="color:var(--green)">${done}</div></div>
+    <div class="metric-card"><div class="metric-label">紧急 (≤3天)</div><div class="metric-value" style="color:var(--red)">${urgent}</div></div>
+    <div class="metric-card"><div class="metric-label">已逾期</div><div class="metric-value" style="color:var(--red)">${overdue}</div></div>
+    <div class="metric-card"><div class="metric-label">阻塞问题</div><div class="metric-value" style="color:${openBlockers>0?'var(--red)':'var(--green)'}">${openBlockers}</div></div>
+  `;
+
+  // Blocker panel
+  const blockers = issues.filter(i => i.status !== 'resolved' && (i.severity === 'blocking' || i.severity === 'major'))
+    .sort((a,b) => (a.severity==='blocking'?0:1) - (b.severity==='blocking'?0:1));
+  const bp = document.getElementById('blocker-panel');
+  const bcl = document.getElementById('blocker-count-label');
+  if (!blockers.length) {
+    bp.innerHTML = `<div style="font-size:12px;color:var(--text-hint);padding:12px 0;">暂无未解决的阻塞/影响进度问题 ✓</div>`;
+    bcl.textContent = '';
+  } else {
+    bcl.textContent = `${blockers.length} 个待处理`;
+    bp.innerHTML = blockers.map(i => {
+      const sevDot = i.severity==='blocking' ? 'sev-blocking' : 'sev-major';
+      const previewText = i.desc ? escHtml(i.desc.slice(0,80)) + (i.desc.length>80?'…':'') : '';
+      return `<div class="issue-blocker-card" onclick="openIssueDetail('${i.id}')">
+        <div class="issue-blocker-label"><span class="sev-dot ${sevDot}" style="margin-right:5px;"></span>${issueSevLabel(i.severity)} · ${issueStatusLabel(i.status)}</div>
+        <div class="issue-blocker-title">${escHtml(i.title)}</div>
+        <div class="issue-blocker-meta">${i.project ? escHtml(i.project)+' · ' : ''}${previewText}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Kanban
+  const cols = [
+    { key:'not_started', label:'未开始', color:'#888780' },
+    { key:'in_progress', label:'进行中', color:'#185fa5' },
+    { key:'done', label:'已完成', color:'#3b6d11' },
+  ];
+  document.getElementById('kanban-board').innerHTML = cols.map(col => {
+    const items = tasks.filter(t=>t.status===col.key).sort((a,b)=>(daysUntil(a.ddl)??9999)-(daysUntil(b.ddl)??9999));
+    const cards = items.map(t => {
+      const top1 = isTop1(t);
+      const prog = parseInt(t.progress||0);
+      return `<div class="kanban-card" onclick="openDetail('${t.id}')">
+        ${top1?`<div class="top1-banner">&#9733; 今日 Top 1</div>`:''}
+        <div class="kanban-card-name">${escHtml(t.project)}</div>
+        <div class="progress-wrap">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;"><span>${escHtml(t.project)}</span><span>${prog}%</span></div>
+          <div class="progress-track"><div class="progress-fill ${progressClass(prog)}" style="width:${prog}%"></div></div>
+        </div>
+        <div class="kanban-card-meta">
+          ${urgencyBadge(t)}
+          ${recurringBadge(t)}
+          ${t.tag?`<span class="badge badge-purple">${escHtml(t.tag)}</span>`:''}
+          ${t.priority==='high'?`<span class="badge badge-red">高优</span>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="kanban-col">
+      <div class="kanban-col-title" style="color:${col.color}">${col.label} <span class="count">${items.length}</span></div>
+      ${cards||'<div style="font-size:12px;color:var(--text-hint);text-align:center;padding:20px 0;">暂无任务</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ========================
+// Projects page
+// ========================
+function renderProjects() {
+  refreshFilterName();
+  const statusFilter = document.getElementById('filter-status').value;
+  const nameFilter = document.getElementById('filter-name').value;
+  let tasks = loadTasks();
+  if (statusFilter) tasks = tasks.filter(t=>t.status===statusFilter);
+  if (nameFilter) tasks = tasks.filter(t=>t.project===nameFilter);
+  tasks.sort((a,b)=>(daysUntil(a.ddl)??9999)-(daysUntil(b.ddl)??9999));
+  const list = document.getElementById('project-list');
+  if (!tasks.length) { list.innerHTML='<div style="text-align:center;color:var(--text-hint);padding:40px 0;">暂无项目，点击「+ 新建任务」添加</div>'; return; }
+  list.innerHTML = tasks.map(t => {
+    const top1 = isTop1(t);
+    return `<div class="project-item" onclick="openDetail('${t.id}')">
+      ${top1?`<div class="top1-banner" style="margin-bottom:0;">&#9733; 今日 Top 1 - 请重点关注</div>`:''}
+      <div class="project-item-header">
+        <span class="project-name">${escHtml(t.project)}</span>
+        ${statusBadge(t.status)} ${urgencyBadge(t)}
+        ${recurringBadge(t)}
+        ${t.priority==='high'?'<span class="badge badge-red">高优</span>':''}
+        ${t.tag?`<span class="badge badge-purple">${escHtml(t.tag)}</span>`:''}
+      </div>
+      <div class="progress-wrap">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;"><span>${escHtml(t.project)}</span><span>${t.progress||0}%</span></div>
+        <div class="progress-track"><div class="progress-fill ${progressClass(t.progress)}" style="width:${t.progress||0}%"></div></div>
+      </div>
+      ${t.notes?`<div class="project-note-preview">&#128204; ${escHtml(t.notes)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ========================
+// Issues page
+// ========================
+function renderIssues() {
+  const statusFilter = document.getElementById('filter-issue-status').value;
+  const sevFilter = document.getElementById('filter-issue-sev').value;
+  let issues = loadIssues();
+  if (statusFilter) issues = issues.filter(i=>i.status===statusFilter);
+  if (sevFilter) issues = issues.filter(i=>i.severity===sevFilter);
+  issues.sort((a,b)=>{
+    const sevOrd = {blocking:0,major:1,minor:2};
+    const statOrd = {open:0,in_progress:1,resolved:2};
+    return (sevOrd[a.severity]||0)-(sevOrd[b.severity]||0) || (statOrd[a.status]||0)-(statOrd[b.status]||0);
+  });
+  const list = document.getElementById('issue-list');
+  if (!issues.length) { list.innerHTML='<div style="text-align:center;color:var(--text-hint);padding:40px 0;">暂无问题记录，点击「+ 记录问题」添加</div>'; return; }
+  list.innerHTML = issues.map(i => {
+    const isBlocking = i.severity==='blocking' && i.status!=='resolved';
+    return `<div class="issue-item ${isBlocking?'blocking':''}" onclick="openIssueDetail('${i.id}')">
+      <div class="issue-item-header">
+        <span class="issue-title">${escHtml(i.title)}</span>
+        ${issueSevBadge(i.severity)} ${issueStatusBadge(i.status)}
+        ${i.tag?`<span class="badge badge-purple">${escHtml(i.tag)}</span>`:''}
+        ${i.project?`<span class="badge badge-blue">${escHtml(i.project)}</span>`:''}
+      </div>
+      ${i.desc?`<div class="issue-preview">${escHtml(i.desc.slice(0,100))}${i.desc.length>100?'…':''}</div>`:''}
+      ${i.log?`<div class="issue-preview" style="color:var(--amber);">&#128221; ${escHtml(i.log.split('\n')[0])}</div>`:''}
+      ${i.solution&&i.status==='resolved'?`<div class="issue-preview" style="color:var(--green);">&#10003; ${escHtml(i.solution.slice(0,80))}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ========================
+// Calendar
+// ========================
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+const CAL_DOWS = ['日','一','二','三','四','五','六'];
+// Generate virtual recurring instances for a given month range (for calendar display)
+function getVirtualRecurringInstances(tasks, year, month) {
+  const virtual = [];
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  // Collect unique recurring templates
+  const seen = new Set();
+  tasks.forEach(t => {
+    if (!t.recurring || !t.recurring.enabled) return;
+    const tid = t.recurring.templateId || t.id;
+    if (seen.has(tid)) return;
+    seen.add(tid);
+    // Use this task as the template
+    const rec = t.recurring;
+    // Generate all occurrences within this month
+    // We scan from 1 year back to 2 years forward to catch all possibilities
+    for (let y = year - 1; y <= year + 2; y++) {
+      if (rec.type === 'weekly') {
+        // For weekly, check each week in the target month
+        const dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+        for (let d = 1; d <= 31; d++) {
+          const date = new Date(y, month, d);
+          if (date.getMonth() !== month) break;
+          if (date.getDay() === rec.day) {
+            const ddl = fmtDate(date);
+            // Check if a real task already exists for this date
+            const exists = tasks.find(x => x.recurring && (x.recurring.templateId === tid || x.id === tid) && x.ddl === ddl);
+            if (!exists) {
+              virtual.push({ ...t, id: `virtual_${tid}_${ddl}`, ddl, status: 'not_started', progress: 0, _virtual: true });
+            }
+          }
+        }
+      } else if (rec.type === 'monthly') {
+        const date = new Date(y, month, rec.day);
+        if (date.getMonth() === month) {
+          // Weekend adjust
+          const origDay = date.getDate();
+          const adj = new Date(date);
+          if (adj.getDay() === 0) adj.setDate(adj.getDate() - 2);
+          else if (adj.getDay() === 6) adj.setDate(adj.getDate() - 1);
+          const ddl = fmtDate(adj);
+          const exists = tasks.find(x => x.recurring && (x.recurring.templateId === tid || x.id === tid) && x.ddl === ddl);
+          if (!exists) {
+            virtual.push({ ...t, id: `virtual_${tid}_${ddl}`, ddl, status: 'not_started', progress: 0, _virtual: true });
+          }
+        }
+      } else if (rec.type === 'quarterly') {
+        const qm = rec.quarterMonth || 1;
+        const quarterStarts = [0, 3, 6, 9];
+        quarterStarts.forEach(qs => {
+          const m = qs + (qm - 1);
+          if (y === year && m === month) {
+            const date = new Date(y, m, rec.day);
+            const adj = new Date(date);
+            if (adj.getDay() === 0) adj.setDate(adj.getDate() - 2);
+            else if (adj.getDay() === 6) adj.setDate(adj.getDate() - 1);
+            const ddl = fmtDate(adj);
+            const exists = tasks.find(x => x.recurring && (x.recurring.templateId === tid || x.id === tid) && x.ddl === ddl);
+            if (!exists) {
+              virtual.push({ ...t, id: `virtual_${tid}_${ddl}`, ddl, status: 'not_started', progress: 0, _virtual: true });
+            }
+          }
+        });
+      } else if (rec.type === 'yearly') {
+        if (y === year) {
+          const date = new Date(y, 0, rec.day); // Jan
+          const adj = new Date(date);
+          if (adj.getDay() === 0) adj.setDate(adj.getDate() - 2);
+          else if (adj.getDay() === 6) adj.setDate(adj.getDate() - 1);
+          if (adj.getMonth() === month) {
+            const ddl = fmtDate(adj);
+            const exists = tasks.find(x => x.recurring && (x.recurring.templateId === tid || x.id === tid) && x.ddl === ddl);
+            if (!exists) {
+              virtual.push({ ...t, id: `virtual_${tid}_${ddl}`, ddl, status: 'not_started', progress: 0, _virtual: true });
+            }
+          }
+        }
+      }
+    }
+  });
+  return virtual;
+}
+
+function renderCalendar() {
+  const tasks = loadTasks();
+  // Add virtual recurring instances for the displayed month
+  const virtual = getVirtualRecurringInstances(tasks, calYear, calMonth);
+  const allTasks = [...tasks, ...virtual];
+
+  document.getElementById('cal-title').textContent = `${calYear} 年 ${calMonth+1} 月`;
+  document.getElementById('cal-dow-row').innerHTML = CAL_DOWS.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  const first = new Date(calYear,calMonth,1);
+  const last = new Date(calYear,calMonth+1,0);
+  const startDow = first.getDay();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dayMap = {};
+  allTasks.forEach(t => {
+    if (!t.ddl) return;
+    const d = new Date(t.ddl + 'T00:00:00');
+    if (d.getFullYear()===calYear && d.getMonth()===calMonth) {
+      const day = d.getDate();
+      if (!dayMap[day]) dayMap[day]=[];
+      dayMap[day].push(t);
+    }
+  });
+  let cells='';
+  const prevLast = new Date(calYear,calMonth,0).getDate();
+  for (let i=startDow-1;i>=0;i--) cells+=`<div class="cal-cell other-month"><div class="cal-date" style="opacity:.4">${prevLast-i}</div></div>`;
+  for (let day=1;day<=last.getDate();day++) {
+    const thisDate = new Date(calYear,calMonth,day);
+    const isToday = thisDate.getTime()===today.getTime();
+    const dayTasks = dayMap[day]||[];
+    const dotsHtml = dayTasks.slice(0,3).map(t=>{
+      const u=urgencyLevel(t);
+      const cls=u==='overdue'||u==='urgent'?'cal-dot-red':u==='soon'?'cal-dot-amber':u==='done'?'cal-dot-green':'cal-dot-blue';
+      const clickAction = t._virtual ? `event.stopPropagation();alert('这是周期任务预览，请前往任务列表操作')` : `event.stopPropagation();openDetail('${t.id}')`;
+      const recurMark = t._virtual ? ' 🔄' : '';
+      return `<div class="cal-dot ${cls}" onclick="${clickAction}" title="${escHtml(t.project)}${recurMark}">${escHtml(t.project)}${recurMark}</div>`;
+    }).join('')+(dayTasks.length>3?`<div class="cal-dot" style="color:var(--text-hint)">+${dayTasks.length-3} 更多</div>`:'');
+    cells+=`<div class="cal-cell ${isToday?'today':''}"><div class="cal-date">${day}</div>${dotsHtml}</div>`;
+  }
+  const totalCells=Math.ceil((startDow+last.getDate())/7)*7;
+  for (let i=1;i<=totalCells-startDow-last.getDate();i++) cells+=`<div class="cal-cell other-month"><div class="cal-date" style="opacity:.4">${i}</div></div>`;
+  document.getElementById('cal-cells').innerHTML = cells;
+}
+function calNav(dir) {
+  calMonth+=dir;
+  if (calMonth>11){calMonth=0;calYear++;}
+  if (calMonth<0){calMonth=11;calYear--;}
+  renderCalendar();
+}
+function calToday() { calYear=new Date().getFullYear(); calMonth=new Date().getMonth(); renderCalendar(); }
+
+// ========================
+// History
+// ========================
+function switchHistoryTab(name) {
+  document.querySelectorAll('.inner-tab').forEach((t,i)=>t.classList.toggle('active', (i===0&&name==='tasks')||(i===1&&name==='issues')));
+  document.getElementById('history-tasks-panel').classList.toggle('active', name==='tasks');
+  document.getElementById('history-issues-panel').classList.toggle('active', name==='issues');
+}
+function renderHistory() {
+  // Tasks
+  const tasks = loadTasks().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const tbody = document.getElementById('history-body');
+  if (!tasks.length) { tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--text-hint);padding:24px;">暂无记录</td></tr>'; }
+  else tbody.innerHTML = tasks.map(t=>`<tr onclick="openDetail('${t.id}')" style="cursor:pointer;">
+    <td>${escHtml(t.project)}</td><td>${t.ddl||'-'}</td><td>${t.recurring&&t.recurring.enabled?`🔄${t.recurring.type==='quarterly'?'每季度'+['第1个月','第2个月','第3个月'][(t.recurring.quarterMonth||1)-1]:recurringLabel(t.recurring.type)}${t.recurring.type!=='weekly'?t.recurring.day+'日':''}`:'-'}</td>
+    <td>${t.progress||0}%</td>
+    <td>${statusLabel(t.status)}</td><td>${priorityLabel(t.priority)}</td><td>${escHtml(t.tag||'-')}</td>
+    <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(t.desc||'-')}</td>
+    <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(t.notes||'-')}</td>
+    <td>${(t.createdAt||'').slice(0,10)}</td><td>${(t.updatedAt||'').slice(0,10)}</td>
+  </tr>`).join('');
+
+  // Issues
+  const issues = loadIssues().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const ibody = document.getElementById('history-issues-body');
+  if (!issues.length) { ibody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text-hint);padding:24px;">暂无问题记录</td></tr>'; }
+  else ibody.innerHTML = issues.map(i=>`<tr onclick="openIssueDetail('${i.id}')" style="cursor:pointer;">
+    <td style="font-weight:500">${escHtml(i.title)}</td><td>${escHtml(i.project||'-')}</td>
+    <td>${issueSevLabel(i.severity)}</td><td>${issueStatusLabel(i.status)}</td><td>${escHtml(i.tag||'-')}</td>
+    <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(i.desc||'-')}</td>
+    <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(i.log||'-')}</td>
+    <td style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(i.solution||'-')}</td>
+    <td>${(i.createdAt||'').slice(0,10)}</td><td>${(i.updatedAt||'').slice(0,10)}</td>
+  </tr>`).join('');
+}
+
+// ========================
+// Task Form
+// ========================
+function resetForm() {
+  document.getElementById('edit-id').value='';
+  document.getElementById('form-title').textContent='添加任务';
+  ['project-name-input','task-ddl','task-tag','task-desc','task-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('task-progress').value=0;
+  document.getElementById('progress-display').textContent='0%';
+  document.getElementById('task-status').value='not_started';
+  document.getElementById('task-priority').value='normal';
+  document.getElementById('task-recurring').checked=false;
+  document.getElementById('recurring-options').classList.remove('visible');
+  document.getElementById('recurring-type').value='monthly';
+  document.getElementById('recurring-day').value=20;
+  document.getElementById('recurring-weekday').value='1';
+  document.getElementById('recurring-quarter-month').value='1';
+  document.getElementById('recurring-day-wrap').style.display='block';
+  document.getElementById('recurring-weekday-wrap').style.display='none';
+  document.getElementById('recurring-quarter-month-wrap').style.display='none';
+  document.getElementById('recurring-preview').textContent='';
+  refreshDatalist();
+}
+function saveTask() {
+  const project = document.getElementById('project-name-input').value.trim();
+  if (!project) { alert('项目名称不能为空'); return; }
+  const tasks = loadTasks();
+  const editId = document.getElementById('edit-id').value;
+  const now = new Date().toISOString();
+  const isRecurring = document.getElementById('task-recurring').checked;
+  const recurringType = document.getElementById('recurring-type').value;
+  const recurringDay = recurringType === 'weekly'
+    ? parseInt(document.getElementById('recurring-weekday').value)
+    : (parseInt(document.getElementById('recurring-day').value) || 20);
+  const recurringQm = recurringType === 'quarterly' ? parseInt(document.getElementById('recurring-quarter-month').value) : undefined;
+  const recurringData = isRecurring ? {
+    enabled: true,
+    type: recurringType,
+    day: recurringDay,
+    quarterMonth: recurringQm
+  } : null;
+  const data = {
+    project, title: project,
+    ddl: document.getElementById('task-ddl').value || null,
+    progress: parseInt(document.getElementById('task-progress').value),
+    status: document.getElementById('task-status').value,
+    priority: document.getElementById('task-priority').value,
+    tag: document.getElementById('task-tag').value.trim(),
+    desc: document.getElementById('task-desc').value.trim(),
+    notes: document.getElementById('task-notes').value.trim(),
+    recurring: recurringData,
+    updatedAt: now
+  };
+  if (editId) {
+    const idx=tasks.findIndex(t=>t.id===editId);
+    if(idx>-1) {
+      // Preserve templateId if editing an existing recurring task
+      if (tasks[idx].recurring && tasks[idx].recurring.templateId) {
+        data.recurring = data.recurring || {};
+        data.recurring.templateId = tasks[idx].recurring.templateId;
+      }
+      // If this is a new recurring task being edited to add recurring, set templateId to its own id
+      if (isRecurring && !data.recurring.templateId) {
+        data.recurring.templateId = editId;
+      }
+      tasks[idx]={...tasks[idx],...data};
+    }
+  } else {
+    const newId = genId();
+    if (isRecurring && recurringData) {
+      recurringData.templateId = newId;
+    }
+    tasks.push({ id:newId, createdAt:now, ...data, recurring: recurringData });
+  }
+  saveTasks(tasks);
+
+  // Auto-generate next recurring instance if task is marked done
+  if (isRecurring && data.status === 'done' && data.ddl) {
+    const nextDdl = computeNextRecurringDdl(recurringData.type, recurringData.day, undefined, recurringData.quarterMonth);
+    const currentTasks = loadTasks();
+    const templateId = recurringData.templateId || (editId || '');
+    const existing = currentTasks.find(t => t.recurring && t.recurring.templateId === templateId && t.ddl === nextDdl);
+    if (!existing) {
+      currentTasks.push({
+        id: genId(),
+        project, title: project,
+        ddl: nextDdl,
+        progress: 0,
+        status: 'not_started',
+        priority: data.priority,
+        tag: data.tag,
+        desc: data.desc,
+        notes: data.notes,
+        recurring: { enabled: true, type: recurringData.type, day: recurringData.day, quarterMonth: recurringData.quarterMonth, templateId },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      saveTasks(currentTasks);
+    }
+  }
+
+  resetForm();
+  alert(editId?'任务已更新！':'任务已保存！');
+  showPage('projects');
+}
+
+// ========================
+// Issue Form
+// ========================
+function resetIssueForm() {
+  document.getElementById('issue-edit-id').value='';
+  document.getElementById('issue-form-title').textContent='记录问题';
+  ['issue-title-input','issue-project-input','issue-tag','issue-desc','issue-log','issue-solution'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('issue-severity').value='blocking';
+  document.getElementById('issue-status').value='open';
+  refreshDatalist();
+}
+function saveIssue() {
+  const title = document.getElementById('issue-title-input').value.trim();
+  if (!title) { alert('问题标题不能为空'); return; }
+  const issues = loadIssues();
+  const editId = document.getElementById('issue-edit-id').value;
+  const now = new Date().toISOString();
+  const data = {
+    title,
+    project: document.getElementById('issue-project-input').value.trim(),
+    severity: document.getElementById('issue-severity').value,
+    status: document.getElementById('issue-status').value,
+    tag: document.getElementById('issue-tag').value.trim(),
+    desc: document.getElementById('issue-desc').value.trim(),
+    log: document.getElementById('issue-log').value.trim(),
+    solution: document.getElementById('issue-solution').value.trim(),
+    updatedAt: now
+  };
+  if (editId) { const idx=issues.findIndex(i=>i.id===editId); if(idx>-1) issues[idx]={...issues[idx],...data}; }
+  else issues.push({ id:genId(), createdAt:now, ...data });
+  saveIssues(issues);
+  resetIssueForm();
+  alert(editId?'问题已更新！':'问题已记录！');
+  showPage('issues');
+}
+
+// ========================
+// Task Detail Modal
+// ========================
+function openDetail(id) {
+  const t = loadTasks().find(t=>t.id===id);
+  if (!t) return;
+  document.getElementById('detail-title').textContent = t.project;
+  const top1 = isTop1(t);
+  document.getElementById('detail-body').innerHTML = `
+    ${top1?`<div class="top1-banner" style="margin-bottom:12px;">&#9733; 今日 Top 1 — 请重点关注</div>`:''}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+      ${statusBadge(t.status)} ${urgencyBadge(t)}
+      ${recurringBadge(t)}
+      ${t.priority==='high'?'<span class="badge badge-red">高优</span>':''}
+      ${t.tag?`<span class="badge badge-purple">${escHtml(t.tag)}</span>`:''}
+    </div>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <tr><td style="padding:6px 0;color:var(--text-muted);width:80px;">项目</td><td style="padding:6px 0;font-weight:500">${escHtml(t.project)}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-muted);">截止日期</td><td style="padding:6px 0;">${t.ddl||'无'}</td></tr>
+      ${t.recurring && t.recurring.enabled ? `<tr><td style="padding:6px 0;color:var(--text-muted);">周期</td><td style="padding:6px 0;"><span class="badge badge-recurring">🔄 ${t.recurring.type === 'quarterly' ? '每季度' + ['第1个月','第2个月','第3个月'][(t.recurring.quarterMonth||1)-1] : recurringLabel(t.recurring.type)}${t.recurring.type!=='weekly' ? t.recurring.day+'日' : ['周日','周一','周二','周三','周四','周五','周六'][t.recurring.day]||''}</span> <span style="font-size:11px;color:var(--text-hint);">完成后自动生成下一期</span></td></tr>` : ''}
+      <tr><td style="padding:6px 0;color:var(--text-muted);">进度</td><td style="padding:6px 0;">
+        <div class="progress-wrap" style="max-width:200px;display:inline-block;width:100%">
+          <div class="progress-track" style="height:8px;"><div class="progress-fill ${progressClass(t.progress)}" style="width:${t.progress||0}%"></div></div>
+        </div>
+        <span style="margin-left:8px;">${t.progress||0}%</span>
+      </td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-muted);">创建</td><td style="padding:6px 0;">${(t.createdAt||'').slice(0,16).replace('T',' ')}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-muted);">更新</td><td style="padding:6px 0;">${(t.updatedAt||'').slice(0,16).replace('T',' ')}</td></tr>
+    </table>
+    ${t.desc?`<div style="margin-top:12px;"><div class="form-label" style="margin-bottom:4px;">任务描述</div><div style="font-size:13px;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px;">${escHtml(t.desc)}</div></div>`:''}
+    ${t.notes?`<div style="margin-top:12px;"><div class="form-label" style="margin-bottom:4px;">问题 / 补充信息</div><div style="font-size:13px;white-space:pre-wrap;background:var(--amber-light);padding:10px;border-radius:6px;color:var(--amber);">${escHtml(t.notes)}</div></div>`:''}
+  `;
+  document.getElementById('detail-edit-btn').onclick = () => { closeModal('detail-modal'); editTask(id); };
+  document.getElementById('detail-delete-btn').onclick = () => {
+    if (confirm(`确认删除「${t.project}」？`)) {
+      let ts=loadTasks(); saveTasks(ts.filter(x=>x.id!==id)); closeModal('detail-modal');
+      const active=document.querySelector('.page.active');
+      if(active.id==='page-dashboard') renderDashboard();
+      else if(active.id==='page-projects') renderProjects();
+      else if(active.id==='page-history') renderHistory();
+    }
+  };
+  document.getElementById('detail-modal').classList.add('open');
+}
+function editTask(id) {
+  const t = loadTasks().find(t=>t.id===id);
+  if (!t) return;
+  showPage('add'); refreshDatalist();
+  document.getElementById('edit-id').value=t.id;
+  document.getElementById('form-title').textContent='编辑任务';
+  document.getElementById('project-name-input').value=t.project||'';
+  document.getElementById('task-ddl').value=t.ddl||'';
+  document.getElementById('task-progress').value=t.progress||0;
+  document.getElementById('progress-display').textContent=(t.progress||0)+'%';
+  document.getElementById('task-status').value=t.status||'not_started';
+  document.getElementById('task-priority').value=t.priority||'normal';
+  document.getElementById('task-tag').value=t.tag||'';
+  document.getElementById('task-desc').value=t.desc||'';
+  document.getElementById('task-notes').value=t.notes||'';
+  // Recurring fields
+  if (t.recurring && t.recurring.enabled) {
+    document.getElementById('task-recurring').checked = true;
+    document.getElementById('recurring-options').classList.add('visible');
+    document.getElementById('recurring-type').value = t.recurring.type || 'monthly';
+    if (t.recurring.type === 'weekly') {
+      document.getElementById('recurring-day-wrap').style.display = 'none';
+      document.getElementById('recurring-weekday-wrap').style.display = 'block';
+      document.getElementById('recurring-quarter-month-wrap').style.display = 'none';
+      document.getElementById('recurring-weekday').value = t.recurring.day !== undefined ? t.recurring.day : 1;
+    } else if (t.recurring.type === 'quarterly') {
+      document.getElementById('recurring-day-wrap').style.display = 'block';
+      document.getElementById('recurring-weekday-wrap').style.display = 'none';
+      document.getElementById('recurring-quarter-month-wrap').style.display = 'block';
+      document.getElementById('recurring-day').value = t.recurring.day || 20;
+      document.getElementById('recurring-quarter-month').value = t.recurring.quarterMonth || 1;
+    } else {
+      document.getElementById('recurring-day-wrap').style.display = 'block';
+      document.getElementById('recurring-weekday-wrap').style.display = 'none';
+      document.getElementById('recurring-quarter-month-wrap').style.display = 'none';
+      document.getElementById('recurring-day').value = t.recurring.day || 20;
+    }
+    updateRecurringDdl();
+  } else {
+    document.getElementById('task-recurring').checked = false;
+    document.getElementById('recurring-options').classList.remove('visible');
+    document.getElementById('recurring-day-wrap').style.display = 'block';
+    document.getElementById('recurring-weekday-wrap').style.display = 'none';
+    document.getElementById('recurring-quarter-month-wrap').style.display = 'none';
+  }
+}
+
+// ========================
+// Issue Detail Modal
+// ========================
+function openIssueDetail(id) {
+  const i = loadIssues().find(i=>i.id===id);
+  if (!i) return;
+  document.getElementById('issue-detail-title').textContent = i.title;
+  document.getElementById('issue-detail-body').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+      ${issueSevBadge(i.severity)} ${issueStatusBadge(i.status)}
+      ${i.tag?`<span class="badge badge-purple">${escHtml(i.tag)}</span>`:''}
+      ${i.project?`<span class="badge badge-blue">${escHtml(i.project)}</span>`:''}
+    </div>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <tr><td style="padding:6px 0;color:var(--text-muted);width:80px;">创建</td><td style="padding:6px 0;">${(i.createdAt||'').slice(0,16).replace('T',' ')}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-muted);">更新</td><td style="padding:6px 0;">${(i.updatedAt||'').slice(0,16).replace('T',' ')}</td></tr>
+    </table>
+    ${i.desc?`<div style="margin-top:12px;"><div class="form-label" style="margin-bottom:4px;">问题描述</div><div style="font-size:13px;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:6px;">${escHtml(i.desc)}</div></div>`:''}
+    ${i.log?`<div style="margin-top:12px;"><div class="form-label" style="margin-bottom:4px;">操作记录</div><div style="font-size:13px;white-space:pre-wrap;background:var(--amber-light);padding:10px;border-radius:6px;">${escHtml(i.log)}</div></div>`:''}
+    ${i.solution?`<div style="margin-top:12px;"><div class="form-label" style="margin-bottom:4px;">解决方案</div><div style="font-size:13px;white-space:pre-wrap;background:var(--green-light);padding:10px;border-radius:6px;color:var(--green);">${escHtml(i.solution)}</div></div>`:''}
+  `;
+  document.getElementById('issue-detail-edit-btn').onclick = () => { closeModal('issue-detail-modal'); editIssue(id); };
+  document.getElementById('issue-detail-delete-btn').onclick = () => {
+    if (confirm(`确认删除问题「${i.title}」？`)) {
+      saveIssues(loadIssues().filter(x=>x.id!==id)); closeModal('issue-detail-modal');
+      const active=document.querySelector('.page.active');
+      if(active.id==='page-dashboard') renderDashboard();
+      else if(active.id==='page-issues') renderIssues();
+      else if(active.id==='page-history') renderHistory();
+    }
+  };
+  document.getElementById('issue-detail-modal').classList.add('open');
+}
+function editIssue(id) {
+  const i = loadIssues().find(i=>i.id===id);
+  if (!i) return;
+  showPage('add-issue'); refreshDatalist();
+  document.getElementById('issue-edit-id').value=i.id;
+  document.getElementById('issue-form-title').textContent='编辑问题';
+  document.getElementById('issue-title-input').value=i.title||'';
+  document.getElementById('issue-project-input').value=i.project||'';
+  document.getElementById('issue-severity').value=i.severity||'blocking';
+  document.getElementById('issue-status').value=i.status||'open';
+  document.getElementById('issue-tag').value=i.tag||'';
+  document.getElementById('issue-desc').value=i.desc||'';
+  document.getElementById('issue-log').value=i.log||'';
+  document.getElementById('issue-solution').value=i.solution||'';
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); }));
+
+// ========================
+// Daily Reminder
+// ========================
+function checkDailyReminder() {
+  const today = fmtDate(new Date());
+  if (localStorage.getItem(REMINDER_KEY) === today) return;
+  const tasks = loadTasks().filter(t=>t.status!=='done');
+  const issues = loadIssues().filter(i=>i.status!=='resolved');
+  const top1 = tasks.filter(t=>isTop1(t));
+  const dueSoon = tasks.filter(t=>{ const d=daysUntil(t.ddl); return d!==null&&d>=0&&d<=7; });
+  const blockers = issues.filter(i=>i.severity==='blocking');
+
+  let html=''; const shown=new Set();
+  if (top1.length) {
+    html+=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">以下任务进度滞后且临近截止，标记为今日 Top 1：</div>`;
+    top1.forEach(t=>{ shown.add(t.id); const d=daysUntil(t.ddl);
+      html+=`<div class="reminder-item top1"><div class="reminder-top1-label">&#9733; Top 1 任务</div>
+        <div class="reminder-item-name">${escHtml(t.project)}</div>
+        <div class="reminder-item-meta">进度 ${t.progress||0}% · ${d<0?`已逾期 ${Math.abs(d)} 天`:`${d} 天后截止`}</div></div>`; });
+  }
+  dueSoon.filter(t=>!shown.has(t.id)).forEach(t=>{ const d=daysUntil(t.ddl);
+    html+=`<div class="reminder-item"><div class="reminder-item-name">${escHtml(t.project)}</div>
+      <div class="reminder-item-meta">进度 ${t.progress||0}% · ${d===0?'今天截止！':`${d} 天后截止`}</div></div>`; });
+  if (blockers.length) {
+    html+=`<div style="font-size:12px;color:var(--red);margin:12px 0 8px;">&#128680; 未解决的阻塞性问题 (${blockers.length})：</div>`;
+    blockers.forEach(i=>{ html+=`<div class="reminder-item blocker">
+      <div class="reminder-blocker-label">🔴 阻塞</div>
+      <div class="reminder-item-name">${escHtml(i.title)}</div>
+      <div class="reminder-item-meta">${i.project?escHtml(i.project)+' · ':''} ${issueStatusLabel(i.status)}</div></div>`; });
+  }
+  if (!html) return;
+  document.getElementById('reminder-body').innerHTML = html;
+  document.getElementById('reminder-modal').classList.add('open');
+  localStorage.setItem(REMINDER_KEY, today);
+}
+
+// ========================
+// Export Excel
+// ========================
+function exportExcel() {
+  const tasks = loadTasks().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
+  const issues = loadIssues().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt));
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Tasks
+  const th = ['项目','截止日期(DDL)','周期','进度(%)','状态','优先级','标签','任务描述','问题/补充信息','创建时间','更新时间'];
+  const tr = tasks.map(t=>[t.project||'',t.ddl||'',t.recurring&&t.recurring.enabled?`${t.recurring.type==='quarterly'?'每季度'+['第1个月','第2个月','第3个月'][(t.recurring.quarterMonth||1)-1]:recurringLabel(t.recurring.type)}${t.recurring.type!=='weekly'?t.recurring.day+'日':''}`:'',t.progress||0,statusLabel(t.status),priorityLabel(t.priority),t.tag||'',t.desc||'',t.notes||'',(t.createdAt||'').slice(0,19).replace('T',' '),(t.updatedAt||'').slice(0,19).replace('T',' ')]);
+  const ws1 = XLSX.utils.aoa_to_sheet([th,...tr]);
+  ws1['!cols']=[16,14,12,10,10,10,12,40,40,18,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws1,'任务记录');
+
+  // Sheet 2: Issues
+  const ih=['问题标题','关联项目','严重度','状态','标签','问题描述','操作记录','解决方案','创建时间','更新时间'];
+  const ir=issues.map(i=>[i.title||'',i.project||'',issueSevLabel(i.severity),issueStatusLabel(i.status),i.tag||'',i.desc||'',i.log||'',i.solution||'',(i.createdAt||'').slice(0,19).replace('T',' '),(i.updatedAt||'').slice(0,19).replace('T',' ')]);
+  const ws2=XLSX.utils.aoa_to_sheet([ih,...ir]);
+  ws2['!cols']=[30,16,12,10,10,40,40,40,18,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws2,'问题日志');
+
+  // Sheet 3: Project summary
+  const projects=[...new Set(tasks.map(t=>t.project).filter(Boolean))];
+  const sh=['项目','总任务数','已完成','平均进度(%)','最近DDL','未解决阻塞问题数'];
+  const sr=projects.map(name=>{
+    const pts=tasks.filter(t=>t.project===name);
+    const done=pts.filter(t=>t.status==='done').length;
+    const avg=Math.round(pts.reduce((s,t)=>s+(parseInt(t.progress)||0),0)/pts.length);
+    const ddls=pts.map(t=>t.ddl).filter(Boolean).sort();
+    const blk=issues.filter(i=>i.project===name&&i.severity==='blocking'&&i.status!=='resolved').length;
+    return [name,pts.length,done,avg,ddls[ddls.length-1]||'',blk];
+  });
+  const ws3=XLSX.utils.aoa_to_sheet([sh,...sr]);
+  ws3['!cols']=[20,12,12,14,14,16].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws3,'项目汇总');
+
+  XLSX.writeFile(wb,`ProjectHub_${fmtDate(new Date())}.xlsx`);
+}
+
+// ========================
+// Init
+// ========================
+document.addEventListener('DOMContentLoaded', () => {
+  generateRecurringTasks();
+  refreshDatalist();
+  renderDashboard();
+  checkDailyReminder();
+  // Notify overlay when data changes
+  const origSave = window.saveTasks;
+  if (!origSave) {
+    // Monkey-patch localStorage.setItem to sync overlay
+    const origSetItem = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = function(key, value) {
+      origSetItem(key, value);
+      if (key === 'projecthub_tasks' && window.electronAPI) {
+        window.electronAPI.taskDataUpdated();
+      }
+    };
+  }
+});
+
+// Desktop overlay toggle
+function toggleDesktopOverlay() {
+  if (window.electronAPI && window.electronAPI.toggleOverlay) {
+    window.electronAPI.toggleOverlay();
+  } else {
+    alert('桌面看板仅在桌面应用中可用');
+  }
+}
+</script>
+</body>
+</html>

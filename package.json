@@ -1,0 +1,29 @@
+{
+  "name": "projecthub-desktop",
+  "version": "1.0.0",
+  "description": "ProjectHub - 项目追踪桌面应用 + 透明看板",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.projecthub.desktop",
+    "productName": "ProjectHub",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
