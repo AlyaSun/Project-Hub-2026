@@ -185,13 +185,6 @@ function createMainWindow() {
       });
     }
   });
-
-  // Hide overlay when main window is minimized
-  mainWindow.on('minimize', () => {
-    if (overlayWindow && overlayWindow.isVisible()) {
-      overlayWindow.hide();
-    }
-  });
 }
 
 function createOverlayWindow() {
