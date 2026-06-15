@@ -328,7 +328,7 @@ function refreshTasks() {
   const now = new Date();
   document.getElementById('date-text').textContent = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
 
-  // Categorize tasks
+  // Categorize tasks (each task goes into exactly one group, priority order)
   const overdue = [];
   const today = [];
   const soon = []; // next 3 days
@@ -339,18 +339,40 @@ function refreshTasks() {
   tasks.forEach(t => {
     if (t.status === 'done') return; // skip done tasks
     const d = daysUntil(t.ddl);
+    // Priority: overdue > today > soon > recurring > inProgress > notStarted
+    // A recurring task that's overdue still shows in overdue, etc.
     if (d !== null && d < 0) overdue.push(t);
     else if (d === 0) today.push(t);
     else if (d !== null && d <= 3) soon.push(t);
     else if (t.recurring && t.recurring.enabled) recurring.push(t);
     else if (t.status === 'in_progress') inProgress.push(t);
-    else if (t.status === 'not_started') notStarted.push(t);
+    else notStarted.push(t);
   });
 
-  // Sort each group
-  overdue.sort((a,b) => daysUntil(a.ddl) - daysUntil(b.ddl));
-  today.sort((a,b) => (a.priority==='high'?0:1) - (b.priority==='high'?0:1));
-  soon.sort((a,b) => daysUntil(a.ddl) - daysUntil(b.ddl));
+  // Sort each group with a unified comparator
+  // Priority: high > medium > low; then by DDL ascending (closest first)
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  function taskComparator(a, b) {
+    // 1. High priority first
+    const pa = priorityOrder[a.priority] ?? 1;
+    const pb = priorityOrder[b.priority] ?? 1;
+    if (pa !== pb) return pa - pb;
+    // 2. Closer DDL first
+    const da = daysUntil(a.ddl);
+    const db = daysUntil(b.ddl);
+    if (da !== null && db !== null) return da - db;
+    if (da !== null) return -1; // has DDL comes first
+    if (db !== null) return 1;
+    // 3. Lower progress first (more work remaining)
+    return (a.progress || 0) - (b.progress || 0);
+  }
+
+  overdue.sort(taskComparator);
+  today.sort(taskComparator);
+  soon.sort(taskComparator);
+  recurring.sort(taskComparator);
+  inProgress.sort(taskComparator);
+  notStarted.sort(taskComparator);
 
   let html = '';
 
@@ -381,7 +403,7 @@ function refreshTasks() {
 
   // Not started
   if (notStarted.length) {
-    html += renderSection('📝 未开始', notStarted.slice(0, 5), 'normal');
+    html += renderSection('📝 未开始', notStarted, 'normal');
   }
 
   if (!html) {
