@@ -323,6 +323,37 @@ ipcMain.on('show-main-window', () => {
   mainWindow.focus();
 });
 
+// Mark task as done from overlay
+ipcMain.handle('mark-task-done', async (_event, taskId) => {
+  if (!mainWindow) return { success: false };
+  try {
+    const result = await mainWindow.webContents.executeJavaScript(`
+      (function() {
+        const tasks = JSON.parse(localStorage.getItem('projecthub_tasks') || '[]');
+        const idx = tasks.findIndex(t => t.id === '${taskId}');
+        if (idx === -1) return { success: false, error: 'not found' };
+        tasks[idx].status = 'done';
+        tasks[idx].progress = 100;
+        tasks[idx].updatedAt = new Date().toISOString();
+        localStorage.setItem('projecthub_tasks', JSON.stringify(tasks));
+        return { success: true, task: tasks[idx] };
+      })()
+    `);
+    // Notify overlay to refresh
+    if (overlayWindow && overlayWindow.isVisible()) {
+      overlayWindow.webContents.executeJavaScript('refreshTasks()');
+    }
+    // Auto-backup
+    if (result.success) {
+      const jsonData = await mainWindow.webContents.executeJavaScript('JSON.stringify(JSON.parse(localStorage.getItem("projecthub_tasks") || "[]"))');
+      backupToOnedrive(jsonData);
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // Sync localStorage between windows
 ipcMain.on('task-data-updated', (_event, jsonData) => {
   if (overlayWindow && overlayWindow.isVisible()) {
