@@ -145,20 +145,65 @@
     align-items: center;
     gap: 8px;
   }
+  .task-desc {
+    font-size: 10.5px;
+    color: rgba(26, 26, 46, 0.55);
+    margin-top: 3px;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
 
   /* Mini progress */
   .mini-progress {
-    width: 100%;
+    width: 40px;
     height: 3px;
     background: rgba(0,0,0,0.06);
     border-radius: 3px;
     margin-top: 6px;
     overflow: hidden;
+    flex-shrink: 0;
   }
   .mini-progress-fill {
     height: 100%;
     border-radius: 3px;
     transition: width 0.3s;
+  }
+
+  /* Done checkbox */
+  .done-checkbox {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border: 1.5px solid rgba(0,0,0,0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    transition: all 0.15s;
+    margin-right: 2px;
+  }
+  .done-checkbox:hover {
+    border-color: #18a058;
+    background: rgba(24, 160, 88, 0.08);
+  }
+  .done-checkbox:checked {
+    background: #18a058;
+    border-color: #18a058;
+  }
+  .done-checkbox:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
   }
 
   /* Badges */
@@ -439,20 +484,23 @@ function renderSection(title, tasks, urgencyClass) {
 
     const cardClass = urgencyLevel(t);
     const progressColor = t.progress >= 80 ? '#18a058' : t.progress >= 50 ? '#f0ad4e' : '#185fa5';
+    const desc = t.desc ? `<div class="task-desc">${escHtml(t.desc)}</div>` : '';
 
-    html += `<div class="task-card ${cardClass}" onclick="openInMainApp('${t.id}')">
+    html += `<div class="task-card ${cardClass}">
       <div class="task-name">
-        ${escHtml(t.project)}
+        <input type="checkbox" class="done-checkbox" onchange="markDone('${t.id}', this.checked)" title="勾选完成">
+        <span style="flex:1;cursor:pointer" onclick="openInMainApp('${t.id}')">${escHtml(t.project)}</span>
         ${t.priority === 'high' ? '<span class="badge badge-red">高优</span>' : ''}
         ${recurringText}
       </div>
+      ${desc}
       <div class="task-meta">
         ${ddlText}
         ${t.tag ? `<span class="badge badge-purple">${escHtml(t.tag)}</span>` : ''}
-        <span>${t.progress || 0}%</span>
-      </div>
-      <div class="mini-progress">
-        <div class="mini-progress-fill" style="width:${t.progress||0}%;background:${progressColor}"></div>
+        <span style="display:flex;align-items:center;gap:4px">
+          ${t.progress || 0}%
+          <span class="mini-progress"><span class="mini-progress-fill" style="width:${t.progress||0}%;background:${progressColor}"></span></span>
+        </span>
       </div>
     </div>`;
   });
@@ -464,6 +512,17 @@ function openInMainApp(taskId) {
   // Send IPC to main process to open the task in main window
   if (window.electronAPI && window.electronAPI.openTask) {
     window.electronAPI.openTask(taskId);
+  }
+}
+
+async function markDone(taskId, checked) {
+  if (!checked) return; // Only handle check, not uncheck
+  if (window.electronAPI && window.electronAPI.markTaskDone) {
+    const result = await window.electronAPI.markTaskDone(taskId);
+    if (result.success) {
+      // Refresh overlay to remove the done task
+      refreshTasks();
+    }
   }
 }
 
