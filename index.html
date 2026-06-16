@@ -223,6 +223,9 @@
   <div class="nav-tab" onclick="showPage('history')">历史记录</div>
   <div class="nav-tab" onclick="toggleDesktopOverlay()" style="background:var(--purple-light);color:var(--purple);">🖥 桌面看板</div>
   <div class="nav-right">
+    <span id="backup-status" style="font-size:11px;align-self:center;margin-right:4px;"></span>
+    <button class="btn" onclick="backupNow()" title="备份到 OneDrive">☁️ 备份</button>
+    <button class="btn" onclick="restoreNow()" title="从 OneDrive 恢复">📥 恢复</button>
     <button class="btn" onclick="exportExcel()">导出 Excel</button>
   </div>
 </nav>
@@ -594,7 +597,9 @@ function showPage(name) {
   if (name === 'calendar') renderCalendar();
   if (name === 'history') renderHistory();
   if (name === 'add' && !document.getElementById('edit-id').value) resetForm();
+  if (name === 'add') setTimeout(() => document.getElementById('project-name-input').focus(), 100);
   if (name === 'add-issue' && !document.getElementById('issue-edit-id').value) resetIssueForm();
+  if (name === 'add-issue') setTimeout(() => document.getElementById('issue-title-input').focus(), 100);
 }
 
 // ========================
@@ -1154,7 +1159,7 @@ function renderCalendar() {
     const dotsHtml = dayTasks.slice(0,3).map(t=>{
       const u=urgencyLevel(t);
       const cls=u==='overdue'||u==='urgent'?'cal-dot-red':u==='soon'?'cal-dot-amber':u==='done'?'cal-dot-green':'cal-dot-blue';
-      const clickAction = t._virtual ? `event.stopPropagation();alert('这是周期任务预览，请前往任务列表操作')` : `event.stopPropagation();openDetail('${t.id}')`;
+      const clickAction = t._virtual ? `event.stopPropagation();showToast('ℹ️ 周期任务预览','请前往任务列表操作')` : `event.stopPropagation();openDetail('${t.id}')`;
       const recurMark = t._virtual ? ' 🔄' : '';
       return `<div class="cal-dot ${cls}" onclick="${clickAction}" title="${escHtml(t.project)}${recurMark}">${escHtml(t.project)}${recurMark}</div>`;
     }).join('')+(dayTasks.length>3?`<div class="cal-dot" style="color:var(--text-hint)">+${dayTasks.length-3} 更多</div>`:'');
@@ -1233,7 +1238,7 @@ function resetForm() {
 }
 function saveTask() {
   const project = document.getElementById('project-name-input').value.trim();
-  if (!project) { alert('项目名称不能为空'); return; }
+  if (!project) { showToast('⚠️ 项目名称不能为空', ''); return; }
   const tasks = loadTasks();
   const editId = document.getElementById('edit-id').value;
   const now = new Date().toISOString();
@@ -1310,7 +1315,7 @@ function saveTask() {
   }
 
   resetForm();
-  alert(editId?'任务已更新！':'任务已保存！');
+  showToast('✅ ' + (editId?'任务已更新！':'任务已保存！'), '');
   showPage('projects');
 }
 
@@ -1327,7 +1332,7 @@ function resetIssueForm() {
 }
 function saveIssue() {
   const title = document.getElementById('issue-title-input').value.trim();
-  if (!title) { alert('问题标题不能为空'); return; }
+  if (!title) { showToast('⚠️ 问题标题不能为空', ''); return; }
   const issues = loadIssues();
   const editId = document.getElementById('issue-edit-id').value;
   const now = new Date().toISOString();
@@ -1346,7 +1351,7 @@ function saveIssue() {
   else issues.push({ id:genId(), createdAt:now, ...data });
   saveIssues(issues);
   resetIssueForm();
-  alert(editId?'问题已更新！':'问题已记录！');
+  showToast('✅ ' + (editId?'问题已更新！':'问题已记录！'), '');
   showPage('issues');
 }
 
@@ -1577,26 +1582,84 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshDatalist();
   renderDashboard();
   checkDailyReminder();
-  // Notify overlay when data changes
+  // Notify overlay & auto-backup when data changes
   const origSave = window.saveTasks;
   if (!origSave) {
-    // Monkey-patch localStorage.setItem to sync overlay
+    // Monkey-patch localStorage.setItem to sync overlay & backup
     const origSetItem = localStorage.setItem.bind(localStorage);
     localStorage.setItem = function(key, value) {
       origSetItem(key, value);
       if (key === 'projecthub_tasks' && window.electronAPI) {
-        window.electronAPI.taskDataUpdated();
+        window.electronAPI.taskDataUpdated(value);
       }
     };
   }
+  // Show backup status on load
+  showBackupStatus();
 });
+
+// ============ Backup / Restore ============
+async function backupNow() {
+  if (!window.electronAPI || !window.electronAPI.backupToOnedrive) {
+    showToast('⚠️ 备份功能仅在桌面应用中可用', '');
+    return;
+  }
+  const result = await window.electronAPI.backupToOnedrive();
+  if (result.success) {
+    showToast('✅ 已备份到 OneDrive', `路径：${result.path}`);
+  } else {
+    showToast('❌ 备份失败', '请确认 OneDrive 目录存在');
+  }
+  showBackupStatus();
+}
+
+async function restoreNow() {
+  if (!window.electronAPI || !window.electronAPI.restoreFromOnedrive) {
+    showToast('⚠️ 恢复功能仅在桌面应用中可用', '');
+    return;
+  }
+  if (!confirm('确定要从 OneDrive 恢复数据吗？\n\n⚠️ 这将覆盖当前的所有任务数据！')) return;
+  const data = await window.electronAPI.restoreFromOnedrive();
+  if (data) {
+    localStorage.setItem('projecthub_tasks', data);
+    location.reload();
+  } else {
+    showToast('⚠️ 恢复失败', 'OneDrive 中没有找到备份数据');
+  }
+}
+
+async function showBackupStatus() {
+  if (!window.electronAPI || !window.electronAPI.getBackupStatus) return;
+  const status = await window.electronAPI.getBackupStatus();
+  const el = document.getElementById('backup-status');
+  if (!el) return;
+  if (status.available) {
+    const date = new Date(status.lastBackup).toLocaleString('zh-CN');
+    el.textContent = `☁️ 上次备份：${date}（${status.taskCount} 条任务）`;
+    el.style.color = 'var(--green)';
+  } else if (status.dir) {
+    el.textContent = '☁️ 尚未备份到 OneDrive';
+    el.style.color = 'var(--text-hint)';
+  } else {
+    el.textContent = '☁️ OneDrive 未检测到';
+    el.style.color = 'var(--text-hint)';
+  }
+}
+
+function showToast(title, message) {
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:60px;right:20px;background:var(--surface);border:0.5px solid var(--border);border-radius:10px;padding:14px 18px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:9999;max-width:320px;animation:slideIn 0.3s ease;';
+  toast.innerHTML = `<div style="font-weight:500;margin-bottom:4px">${title}</div><div style="font-size:12px;color:var(--text-muted)">${message}</div>`;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
 
 // Desktop overlay toggle
 function toggleDesktopOverlay() {
   if (window.electronAPI && window.electronAPI.toggleOverlay) {
     window.electronAPI.toggleOverlay();
   } else {
-    alert('桌面看板仅在桌面应用中可用');
+    showToast('⚠️ 桌面看板仅在桌面应用中可用', '');
   }
 }
 </script>
