@@ -157,6 +157,13 @@
     -webkit-box-orient: vertical;
   }
 
+  /* Next occurrence hint */
+  .next-hint {
+    font-size: 10px;
+    color: rgba(26, 26, 46, 0.35);
+    margin-left: 4px;
+  }
+
   /* Done checkbox */
   .done-checkbox {
     -webkit-appearance: none;
@@ -319,6 +326,7 @@
 const STORAGE_KEY = 'projecthub_tasks';
 const TITLE_KEY = 'projecthub_board_title';
 const DEFAULT_TITLE = '📋 ProjectHub 看板';
+const WEEKDAYS = ['日','一','二','三','四','五','六'];
 
 function loadTasks() {
   try {
@@ -347,7 +355,7 @@ function editTitle() {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'title-edit-input';
-  input.value = currentText.replace(/^[^\s]+\s/, ''); // remove emoji prefix for editing
+  input.value = currentText.replace(/^[^\s]+\s/, '');
   input.placeholder = '输入看板名称';
 
   const wrapper = document.createElement('span');
@@ -371,7 +379,6 @@ function editTitle() {
       newTitle = loadBoardTitle();
     }
 
-    // Restore h2 element
     const h2 = document.createElement('h2');
     h2.id = 'board-title';
     h2.textContent = newTitle;
@@ -387,7 +394,6 @@ function editTitle() {
   });
 }
 
-// Init title on load
 document.getElementById('board-title').textContent = loadBoardTitle();
 
 // ============ Helpers ============
@@ -396,6 +402,12 @@ function daysUntil(ddl) {
   const now = new Date(); now.setHours(0,0,0,0);
   const d = new Date(ddl + 'T00:00:00');
   return Math.ceil((d - now) / 86400000);
+}
+
+function weekdayOf(ddl) {
+  if (!ddl) return '';
+  const d = new Date(ddl + 'T00:00:00');
+  return WEEKDAYS[d.getDay()];
 }
 
 function urgencyLevel(t) {
@@ -413,34 +425,108 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
+// Calculate the next occurrence date after the current DDL
+function calcNextOccurrence(recurring, currentDdl) {
+  if (!recurring || !recurring.enabled || !currentDdl) return null;
+
+  const base = new Date(currentDdl + 'T00:00:00');
+  let next;
+
+  switch (recurring.type) {
+    case 'weekly':
+      next = new Date(base.getTime() + 7 * 86400000);
+      break;
+    case 'monthly':
+      next = new Date(base.getFullYear(), base.getMonth() + 1, recurring.day || base.getDate());
+      // Handle months where the day doesn't exist (e.g. Feb 31 → Mar 3)
+      if (next.getMonth() !== (base.getMonth() + 1) % 12) {
+        next = new Date(base.getFullYear(), base.getMonth() + 2, 0); // last day of next month
+      }
+      break;
+    case 'quarterly':
+      const qMonth = recurring.quarterMonth || 1; // 1, 2, or 3
+      // Current DDL tells us which quarter we're in
+      // Next quarter: add 3 months, keep same quarterMonth offset
+      const currentQuarter = Math.floor(base.getMonth() / 3);
+      const nextQuarter = currentQuarter + 1;
+      const nextMonth = nextQuarter * 3 + (qMonth - 1);
+      const nextYear = nextMonth >= 12 ? base.getFullYear() + 1 : base.getFullYear();
+      const adjustedMonth = nextMonth % 12;
+      next = new Date(nextYear, adjustedMonth, recurring.day || base.getDate());
+      if (next.getMonth() !== adjustedMonth) {
+        next = new Date(nextYear, adjustedMonth + 1, 0); // last day of that month
+      }
+      break;
+    case 'yearly':
+      next = new Date(base.getFullYear() + 1, base.getMonth(), recurring.day || base.getDate());
+      if (next.getMonth() !== base.getMonth()) {
+        next = new Date(base.getFullYear() + 1, base.getMonth() + 1, 0);
+      }
+      break;
+    default:
+      return null;
+  }
+
+  const mm = String(next.getMonth() + 1).padStart(2, '0');
+  const dd = String(next.getDate()).padStart(2, '0');
+  const wd = WEEKDAYS[next.getDay()];
+  return `${mm}/${dd}(${wd})`;
+}
+
 // ============ Render ============
 function refreshTasks() {
   const tasks = loadTasks();
   const now = new Date();
   document.getElementById('date-text').textContent =
-    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
+    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${WEEKDAYS[now.getDay()]}`;
 
   // Filter: only non-done tasks
   const activeTasks = tasks.filter(t => t.status !== 'done');
 
-  // Sort by time order: DDL ascending (closest first), no-DDL tasks at the end
+  // Deduplicate recurring tasks: for same project name, only keep the nearest instance
+  const recurringSeen = {};
+  const dedupedTasks = [];
+
+  // First pass: sort by DDL to ensure nearest comes first
   activeTasks.sort((a, b) => {
     const da = daysUntil(a.ddl);
     const db = daysUntil(b.ddl);
     if (da !== null && db !== null) return da - db;
-    if (da !== null) return -1;  // has DDL comes first
+    if (da !== null) return -1;
     if (db !== null) return 1;
     return 0;
   });
 
-  if (activeTasks.length === 0) {
+  activeTasks.forEach(t => {
+    if (t.recurring && t.recurring.enabled) {
+      const key = t.project;
+      if (recurringSeen[key]) {
+        // Skip - we already have the nearest instance
+        return;
+      }
+      recurringSeen[key] = true;
+    }
+    dedupedTasks.push(t);
+  });
+
+  // Final sort by DDL ascending
+  dedupedTasks.sort((a, b) => {
+    const da = daysUntil(a.ddl);
+    const db = daysUntil(b.ddl);
+    if (da !== null && db !== null) return da - db;
+    if (da !== null) return -1;
+    if (db !== null) return 1;
+    return 0;
+  });
+
+  if (dedupedTasks.length === 0) {
     document.getElementById('task-list').innerHTML =
       '<div class="empty-state">✅ 没有待办任务<br><span style="font-size:10px;margin-top:4px;display:block;">在主窗口添加任务后这里会自动更新</span></div>';
     return;
   }
 
   let html = '';
-  activeTasks.forEach(t => {
+  dedupedTasks.forEach(t => {
     html += renderTaskCard(t);
   });
 
@@ -449,30 +535,29 @@ function refreshTasks() {
 
 function renderTaskCard(t) {
   const d = daysUntil(t.ddl);
+  const wd = weekdayOf(t.ddl);
   const cardClass = urgencyLevel(t);
 
-  // DDL badge
+  // DDL badge with weekday
   let ddlText = '';
   if (d !== null) {
-    if (d < 0) ddlText = `<span class="badge badge-red">逾期${Math.abs(d)}天</span>`;
-    else if (d === 0) ddlText = `<span class="badge badge-amber">今天</span>`;
-    else if (d === 1) ddlText = `<span class="badge badge-amber">明天</span>`;
-    else ddlText = `<span class="badge badge-blue">${d}天后</span>`;
+    const wdSuffix = wd ? `(${wd})` : '';
+    if (d < 0) ddlText = `<span class="badge badge-red">逾期${Math.abs(d)}天${wdSuffix}</span>`;
+    else if (d === 0) ddlText = `<span class="badge badge-amber">今天${wdSuffix}</span>`;
+    else if (d === 1) ddlText = `<span class="badge badge-amber">明天${wdSuffix}</span>`;
+    else ddlText = `<span class="badge badge-blue">${d}天后${wdSuffix}</span>`;
   }
 
-  // Recurring badge
-  let recurringText = '';
+  // Next occurrence hint for recurring tasks
+  let nextHint = '';
   if (t.recurring && t.recurring.enabled) {
-    const labels = { monthly: '每月', quarterly: '每季度', yearly: '每年', weekly: '每周' };
-    let rText = labels[t.recurring.type] || t.recurring.type;
-    if (t.recurring.type === 'quarterly' && t.recurring.quarterMonth) {
-      rText += ['第1个月','第2个月','第3个月'][t.recurring.quarterMonth - 1];
+    const nextDate = calcNextOccurrence(t.recurring, t.ddl);
+    if (nextDate) {
+      nextHint = `<span class="next-hint">→下次: ${nextDate}</span>`;
     }
-    if (t.recurring.type !== 'weekly') rText += t.recurring.day + '日';
-    recurringText = `<span class="badge badge-purple">🔄${rText}</span>`;
   }
 
-  // Status tag: in_progress → 🟢 进行中, otherwise → ⚪ 未开始
+  // Status tag
   const isProgress = t.status === 'in_progress';
   const statusTag = isProgress
     ? '<span class="badge badge-status-inprogress">● 进行中</span>'
@@ -487,11 +572,11 @@ function renderTaskCard(t) {
       <span style="flex:1;cursor:pointer" onclick="openInMainApp('${t.id}')">${escHtml(t.project)}</span>
       ${statusTag}
       ${t.priority === 'high' ? '<span class="badge badge-red">高优</span>' : ''}
-      ${recurringText}
     </div>
     ${desc}
     <div class="task-meta">
       ${ddlText}
+      ${nextHint}
       ${t.tag ? `<span class="badge badge-purple">${escHtml(t.tag)}</span>` : ''}
     </div>
   </div>`;
