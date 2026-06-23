@@ -44,6 +44,30 @@
     font-weight: 600;
     color: #1a1a2e;
     letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    -webkit-app-region: no-drag;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overlay-header h2:hover {
+    opacity: 0.65;
+  }
+  .title-edit-input {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a1a2e;
+    letter-spacing: 0.5px;
+    border: 1.5px solid #185fa5;
+    border-radius: 6px;
+    padding: 2px 6px;
+    outline: none;
+    background: rgba(255,255,255,0.9);
+    -webkit-app-region: no-drag;
+    width: 180px;
+    font-family: inherit;
   }
   .overlay-header .date-text {
     font-size: 11px;
@@ -83,20 +107,6 @@
   .overlay-content::-webkit-scrollbar { width: 4px; }
   .overlay-content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
 
-  /* Section */
-  .section { margin-bottom: 14px; }
-  .section-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: rgba(26, 26, 46, 0.45);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
   /* Task card */
   .task-card {
     background: rgba(255, 255, 255, 0.55);
@@ -113,21 +123,10 @@
     transform: translateY(-1px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
-  .task-card.overdue {
-    border-left: 3px solid #dc3545;
-  }
-  .task-card.urgent {
-    border-left: 3px solid #e67e22;
-  }
-  .task-card.soon {
-    border-left: 3px solid #f0ad4e;
-  }
-  .task-card.done {
-    opacity: 0.5;
-  }
-  .task-card.normal {
-    border-left: 3px solid #18a058;
-  }
+  .task-card.overdue { border-left: 3px solid #dc3545; }
+  .task-card.urgent { border-left: 3px solid #e67e22; }
+  .task-card.soon { border-left: 3px solid #f0ad4e; }
+  .task-card.normal { border-left: 3px solid #18a058; }
 
   .task-name {
     font-size: 12.5px;
@@ -143,7 +142,8 @@
     color: rgba(26, 26, 46, 0.5);
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .task-desc {
     font-size: 10.5px;
@@ -155,22 +155,6 @@
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-  }
-
-  /* Mini progress */
-  .mini-progress {
-    width: 40px;
-    height: 3px;
-    background: rgba(0,0,0,0.06);
-    border-radius: 3px;
-    margin-top: 6px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .mini-progress-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s;
   }
 
   /* Done checkbox */
@@ -217,9 +201,11 @@
   }
   .badge-red { background: rgba(220,53,69,0.1); color: #dc3545; }
   .badge-amber { background: rgba(240,173,78,0.1); color: #e67e22; }
-  .badge-green { background: rgba(24,160,88,0.1); color: #18a058; }
   .badge-blue { background: rgba(24,95,165,0.1); color: #185fa5; }
   .badge-purple { background: rgba(111,66,193,0.1); color: #6f42c1; }
+  /* Status badges */
+  .badge-status-inprogress { background: rgba(24,160,88,0.1); color: #18a058; }
+  .badge-status-notstart { background: rgba(150,150,150,0.1); color: #888; }
 
   /* Empty state */
   .empty-state {
@@ -307,7 +293,7 @@
 <div class="overlay-container" id="overlay">
   <div class="overlay-header">
     <div>
-      <h2>📋 ProjectHub 看板</h2>
+      <h2 id="board-title" onclick="editTitle()" title="点击编辑标题">📋 ProjectHub 看板</h2>
       <div class="date-text" id="date-text"></div>
     </div>
     <div class="btn-group">
@@ -330,8 +316,9 @@
 
 <script>
 // ============ Data Layer ============
-// Read tasks from the same localStorage key as the main app
 const STORAGE_KEY = 'projecthub_tasks';
+const TITLE_KEY = 'projecthub_board_title';
+const DEFAULT_TITLE = '📋 ProjectHub 看板';
 
 function loadTasks() {
   try {
@@ -339,11 +326,71 @@ function loadTasks() {
   } catch { return []; }
 }
 
-// ============ Helpers ============
-function fmtDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function loadBoardTitle() {
+  return localStorage.getItem(TITLE_KEY) || DEFAULT_TITLE;
 }
 
+function saveBoardTitle(title) {
+  localStorage.setItem(TITLE_KEY, title);
+}
+
+// ============ Title Edit ============
+let isEditingTitle = false;
+
+function editTitle() {
+  if (isEditingTitle) return;
+  isEditingTitle = true;
+
+  const el = document.getElementById('board-title');
+  const currentText = loadBoardTitle();
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'title-edit-input';
+  input.value = currentText.replace(/^[^\s]+\s/, ''); // remove emoji prefix for editing
+  input.placeholder = '输入看板名称';
+
+  const wrapper = document.createElement('span');
+  wrapper.style.cssText = 'display:inline-flex;align-items:center;gap:0;';
+  wrapper.innerHTML = '📋 ';
+  wrapper.appendChild(input);
+
+  el.parentNode.replaceChild(wrapper, el);
+  wrapper.id = 'board-title';
+  input.focus();
+  input.select();
+
+  function finishEdit(save) {
+    if (!isEditingTitle) return;
+    isEditingTitle = false;
+    let newTitle;
+    if (save && input.value.trim()) {
+      newTitle = '📋 ' + input.value.trim();
+      saveBoardTitle(newTitle);
+    } else {
+      newTitle = loadBoardTitle();
+    }
+
+    // Restore h2 element
+    const h2 = document.createElement('h2');
+    h2.id = 'board-title';
+    h2.textContent = newTitle;
+    h2.setAttribute('onclick', 'editTitle()');
+    h2.setAttribute('title', '点击编辑标题');
+    wrapper.parentNode.replaceChild(h2, wrapper);
+  }
+
+  input.addEventListener('blur', () => finishEdit(true));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { finishEdit(false); }
+  });
+}
+
+// Init title on load
+document.getElementById('board-title').textContent = loadBoardTitle();
+
+// ============ Helpers ============
 function daysUntil(ddl) {
   if (!ddl) return null;
   const now = new Date(); now.setHours(0,0,0,0);
@@ -352,7 +399,6 @@ function daysUntil(ddl) {
 }
 
 function urgencyLevel(t) {
-  if (t.status === 'done') return 'done';
   const d = daysUntil(t.ddl);
   if (d === null) return 'normal';
   if (d < 0) return 'overdue';
@@ -371,156 +417,97 @@ function escHtml(s) {
 function refreshTasks() {
   const tasks = loadTasks();
   const now = new Date();
-  document.getElementById('date-text').textContent = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
+  document.getElementById('date-text').textContent =
+    `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${['周日','周一','周二','周三','周四','周五','周六'][now.getDay()]}`;
 
-  // Categorize tasks (each task goes into exactly one group, priority order)
-  const overdue = [];
-  const today = [];
-  const soon = []; // next 3 days
-  const recurring = [];
-  const inProgress = [];
-  const notStarted = [];
+  // Filter: only non-done tasks
+  const activeTasks = tasks.filter(t => t.status !== 'done');
 
-  tasks.forEach(t => {
-    if (t.status === 'done') return; // skip done tasks
-    const d = daysUntil(t.ddl);
-    // Priority: overdue > today > soon > recurring > inProgress > notStarted
-    // A recurring task that's overdue still shows in overdue, etc.
-    if (d !== null && d < 0) overdue.push(t);
-    else if (d === 0) today.push(t);
-    else if (d !== null && d <= 3) soon.push(t);
-    else if (t.recurring && t.recurring.enabled) recurring.push(t);
-    else if (t.status === 'in_progress') inProgress.push(t);
-    else notStarted.push(t);
-  });
-
-  // Sort each group with a unified comparator
-  // Priority: high > medium > low; then by DDL ascending (closest first)
-  const priorityOrder = { high: 0, medium: 1, low: 2 };
-  function taskComparator(a, b) {
-    // 1. High priority first
-    const pa = priorityOrder[a.priority] ?? 1;
-    const pb = priorityOrder[b.priority] ?? 1;
-    if (pa !== pb) return pa - pb;
-    // 2. Closer DDL first
+  // Sort by time order: DDL ascending (closest first), no-DDL tasks at the end
+  activeTasks.sort((a, b) => {
     const da = daysUntil(a.ddl);
     const db = daysUntil(b.ddl);
     if (da !== null && db !== null) return da - db;
-    if (da !== null) return -1; // has DDL comes first
+    if (da !== null) return -1;  // has DDL comes first
     if (db !== null) return 1;
-    // 3. Lower progress first (more work remaining)
-    return (a.progress || 0) - (b.progress || 0);
-  }
+    return 0;
+  });
 
-  overdue.sort(taskComparator);
-  today.sort(taskComparator);
-  soon.sort(taskComparator);
-  recurring.sort(taskComparator);
-  inProgress.sort(taskComparator);
-  notStarted.sort(taskComparator);
+  if (activeTasks.length === 0) {
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state">✅ 没有待办任务<br><span style="font-size:10px;margin-top:4px;display:block;">在主窗口添加任务后这里会自动更新</span></div>';
+    return;
+  }
 
   let html = '';
-
-  // Overdue
-  if (overdue.length) {
-    html += renderSection('🚨 逾期', overdue, 'overdue');
-  }
-
-  // Today
-  if (today.length) {
-    html += renderSection('📌 今日到期', today, 'urgent');
-  }
-
-  // Coming soon
-  if (soon.length) {
-    html += renderSection('⏰ 即将到期', soon, 'soon');
-  }
-
-  // Recurring
-  if (recurring.length) {
-    html += renderSection('🔄 固定任务', recurring, 'recurring');
-  }
-
-  // In progress
-  if (inProgress.length) {
-    html += renderSection('🔧 进行中', inProgress, 'normal');
-  }
-
-  // Not started
-  if (notStarted.length) {
-    html += renderSection('📝 未开始', notStarted, 'normal');
-  }
-
-  if (!html) {
-    html = '<div class="empty-state">✅ 没有待办任务<br><span style="font-size:10px;margin-top:4px;display:block;">在主窗口添加任务后这里会自动更新</span></div>';
-  }
+  activeTasks.forEach(t => {
+    html += renderTaskCard(t);
+  });
 
   document.getElementById('task-list').innerHTML = html;
 }
 
-function renderSection(title, tasks, urgencyClass) {
-  let html = `<div class="section">
-    <div class="section-title">${title} (${tasks.length})</div>`;
-  tasks.forEach(t => {
-    const d = daysUntil(t.ddl);
-    let ddlText = '';
-    if (d !== null) {
-      if (d < 0) ddlText = `<span class="badge badge-red">逾期${Math.abs(d)}天</span>`;
-      else if (d === 0) ddlText = `<span class="badge badge-amber">今天</span>`;
-      else if (d === 1) ddlText = `<span class="badge badge-amber">明天</span>`;
-      else ddlText = `<span class="badge badge-blue">${d}天后</span>`;
+function renderTaskCard(t) {
+  const d = daysUntil(t.ddl);
+  const cardClass = urgencyLevel(t);
+
+  // DDL badge
+  let ddlText = '';
+  if (d !== null) {
+    if (d < 0) ddlText = `<span class="badge badge-red">逾期${Math.abs(d)}天</span>`;
+    else if (d === 0) ddlText = `<span class="badge badge-amber">今天</span>`;
+    else if (d === 1) ddlText = `<span class="badge badge-amber">明天</span>`;
+    else ddlText = `<span class="badge badge-blue">${d}天后</span>`;
+  }
+
+  // Recurring badge
+  let recurringText = '';
+  if (t.recurring && t.recurring.enabled) {
+    const labels = { monthly: '每月', quarterly: '每季度', yearly: '每年', weekly: '每周' };
+    let rText = labels[t.recurring.type] || t.recurring.type;
+    if (t.recurring.type === 'quarterly' && t.recurring.quarterMonth) {
+      rText += ['第1个月','第2个月','第3个月'][t.recurring.quarterMonth - 1];
     }
+    if (t.recurring.type !== 'weekly') rText += t.recurring.day + '日';
+    recurringText = `<span class="badge badge-purple">🔄${rText}</span>`;
+  }
 
-    let recurringText = '';
-    if (t.recurring && t.recurring.enabled) {
-      const labels = { monthly: '每月', quarterly: '每季度', yearly: '每年', weekly: '每周' };
-      let rText = labels[t.recurring.type] || t.recurring.type;
-      if (t.recurring.type === 'quarterly' && t.recurring.quarterMonth) {
-        rText += ['第1个月','第2个月','第3个月'][t.recurring.quarterMonth - 1];
-      }
-      if (t.recurring.type !== 'weekly') rText += t.recurring.day + '日';
-      recurringText = `<span class="badge badge-purple">🔄${rText}</span>`;
-    }
+  // Status tag: in_progress → 🟢 进行中, otherwise → ⚪ 未开始
+  const isProgress = t.status === 'in_progress';
+  const statusTag = isProgress
+    ? '<span class="badge badge-status-inprogress">● 进行中</span>'
+    : '<span class="badge badge-status-notstart">○ 未开始</span>';
 
-    const cardClass = urgencyLevel(t);
-    const progressColor = t.progress >= 80 ? '#18a058' : t.progress >= 50 ? '#f0ad4e' : '#185fa5';
-    const desc = t.desc ? `<div class="task-desc">${escHtml(t.desc)}</div>` : '';
+  // Description
+  const desc = t.desc ? `<div class="task-desc">${escHtml(t.desc)}</div>` : '';
 
-    html += `<div class="task-card ${cardClass}">
-      <div class="task-name">
-        <input type="checkbox" class="done-checkbox" onchange="markDone('${t.id}', this.checked)" title="勾选完成">
-        <span style="flex:1;cursor:pointer" onclick="openInMainApp('${t.id}')">${escHtml(t.project)}</span>
-        ${t.priority === 'high' ? '<span class="badge badge-red">高优</span>' : ''}
-        ${recurringText}
-      </div>
-      ${desc}
-      <div class="task-meta">
-        ${ddlText}
-        ${t.tag ? `<span class="badge badge-purple">${escHtml(t.tag)}</span>` : ''}
-        <span style="display:flex;align-items:center;gap:4px">
-          ${t.progress || 0}%
-          <span class="mini-progress"><span class="mini-progress-fill" style="width:${t.progress||0}%;background:${progressColor}"></span></span>
-        </span>
-      </div>
-    </div>`;
-  });
-  html += '</div>';
-  return html;
+  return `<div class="task-card ${cardClass}">
+    <div class="task-name">
+      <input type="checkbox" class="done-checkbox" onchange="markDone('${t.id}', this.checked)" title="勾选完成">
+      <span style="flex:1;cursor:pointer" onclick="openInMainApp('${t.id}')">${escHtml(t.project)}</span>
+      ${statusTag}
+      ${t.priority === 'high' ? '<span class="badge badge-red">高优</span>' : ''}
+      ${recurringText}
+    </div>
+    ${desc}
+    <div class="task-meta">
+      ${ddlText}
+      ${t.tag ? `<span class="badge badge-purple">${escHtml(t.tag)}</span>` : ''}
+    </div>
+  </div>`;
 }
 
 function openInMainApp(taskId) {
-  // Send IPC to main process to open the task in main window
   if (window.electronAPI && window.electronAPI.openTask) {
     window.electronAPI.openTask(taskId);
   }
 }
 
 async function markDone(taskId, checked) {
-  if (!checked) return; // Only handle check, not uncheck
+  if (!checked) return;
   if (window.electronAPI && window.electronAPI.markTaskDone) {
     const result = await window.electronAPI.markTaskDone(taskId);
     if (result.success) {
-      // Refresh overlay to remove the done task
       refreshTasks();
     }
   }
@@ -542,9 +529,8 @@ function togglePin() {
 
 // ============ Auto-refresh ============
 refreshTasks();
-setInterval(refreshTasks, 60000); // Refresh every minute
+setInterval(refreshTasks, 60000);
 
-// Listen for storage changes from main window
 window.addEventListener('storage', (e) => {
   if (e.key === STORAGE_KEY) refreshTasks();
 });
